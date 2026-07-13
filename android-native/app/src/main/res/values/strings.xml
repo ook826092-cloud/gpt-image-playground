@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App -->
+    <string name="app_name">GPT 图像工作台</string>
+
+    <!-- Navigation -->
+    <string name="nav_workbench">工作台</string>
+    <string name="nav_history">历史</string>
+    <string name="nav_settings">设置</string>
+
+    <!-- Common -->
+    <string name="common_cancel">取消</string>
+    <string name="common_confirm">确定</string>
+    <string name="common_save">保存</string>
+    <string name="common_delete">删除</string>
+    <string name="common_close">关闭</string>
+    <string name="common_retry">重试</string>
+    <string name="common_copy">复制</string>
+    <string name="common_download">下载</string>
+    <string name="common_edit">编辑</string>
+    <string name="common_share">分享</string>
+    <string name="common_loading">加载中…</string>
+    <string name="common_empty">暂无内容</string>
+    <string name="common_back">返回</string>
+
+    <!-- Workbench -->
+    <string name="workbench_prompt_hint">输入提示词，描述你想生成的图片…</string>
+    <string name="workbench_generate">开始生成</string>
+    <string name="workbench_generating">生成中…</string>
+    <string name="workbench_advanced">高级</string>
+    <string name="workbench_output">输出</string>
+    <string name="workbench_no_output">尚未生成任何图片</string>
+    <string name="workbench_prompt_empty">请先输入提示词</string>
+    <string name="workbench_provider_not_configured">请先在设置中配置供应商</string>
+    <string name="workbench_clear_prompt">清空提示词</string>
+    <string name="workbench_count">数量</string>
+    <string name="workbench_size">尺寸</string>
+    <string name="workbench_quality">质量</string>
+    <string name="workbench_format">格式</string>
+    <string name="workbench_model">模型</string>
+    <string name="workbench_provider">供应商</string>
+
+    <!-- Quality options -->
+    <string name="quality_low">低</string>
+    <string name="quality_medium">中</string>
+    <string name="quality_high">高</string>
+    <string name="quality_auto">自动</string>
+
+    <!-- Settings -->
+    <string name="settings_title">设置</string>
+    <string name="settings_providers">供应商与模型</string>
+    <string name="settings_appearance">外观</string>
+    <string name="settings_language">语言</string>
+    <string name="settings_theme">主题</string>
+    <string name="settings_theme_light">浅色</string>
+    <string name="settings_theme_dark">深色</string>
+    <string name="settings_theme_system">跟随系统</string>
+    <string name="settings_about">关于</string>
+    <string name="settings_about_version">版本</string>
+    <string name="settings_about_desc">原生 Android 版 GPT 图像工作台，Kotlin + Jetpack Compose 实现。</string>
+
+    <!-- Provider editing -->
+    <string name="provider_add">添加供应商</string>
+    <string name="provider_edit">编辑供应商</string>
+    <string name="provider_name">名称</string>
+    <string name="provider_kind">类型</string>
+    <string name="provider_api_key">API Key</string>
+    <string name="provider_base_url">Base URL</string>
+    <string name="provider_base_url_hint">留空则使用官方地址</string>
+    <string name="provider_model_id">模型 ID</string>
+    <string name="provider_active">启用</string>
+    <string name="provider_select">选择供应商</string>
+    <string name="provider_test">测试连接</string>
+    <string name="provider_testing">测试中…</string>
+    <string name="provider_test_success">连接成功</string>
+    <string name="provider_test_failed">连接失败</string>
+    <string name="provider_name_required">请填写名称</string>
+    <string name="provider_api_key_required">请填写 API Key</string>
+    <string name="provider_kind_openai">OpenAI 兼容</string>
+    <string name="provider_kind_gemini">Google Gemini</string>
+
+    <!-- History -->
+    <string name="history_title">历史</string>
+    <string name="history_empty">还没有生成记录</string>
+    <string name="history_duration">耗时</string>
+    <string name="history_delete_confirm">确认删除这条记录？</string>
+    <string name="history_clear">清空历史</string>
+    <string name="history_clear_confirm">确认清空全部历史？此操作不可撤销。</string>
+
+    <!-- Errors -->
+    <string name="error_network">网络错误，请检查连接</string>
+    <string name="error_api">接口返回错误：%1$s</string>
+    <string name="error_unknown">未知错误</string>
+    <string name="error_image_save">图片保存失败</string>
+</resources>
