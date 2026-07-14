@@ -8,6 +8,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.gptimage.playground.data.model.AppConfig
 import com.gptimage.playground.data.model.AppLanguage
+import com.gptimage.playground.data.model.CustomImageModel
+import com.gptimage.playground.data.model.CustomImageModels
 import com.gptimage.playground.data.model.ImageModelCatalog
 import com.gptimage.playground.data.model.ProviderCredentials
 import com.gptimage.playground.data.model.ThemeMode
@@ -33,7 +35,11 @@ class SettingsStore(private val context: Context) {
 
     val config: Flow<AppConfig> = context.settingsDataStore.data.map { prefs ->
         prefs[key]?.let { raw ->
-            runCatching { json.decodeFromString<AppConfig>(raw) }.getOrNull()
+            runCatching {
+                val parsed = json.decodeFromString<AppConfig>(raw)
+                // 加载时归一化自定义模型列表（去重 / 过滤 / 补前缀）
+                parsed.copy(customImageModels = CustomImageModels.normalize(parsed.customImageModels))
+            }.getOrNull()
         } ?: AppConfig()
     }
 
@@ -67,6 +73,10 @@ class SettingsStore(private val context: Context) {
     suspend fun setThemeMode(mode: ThemeMode) = update { it.copy(themeMode = mode) }
 
     suspend fun setLanguage(language: AppLanguage) = update { it.copy(language = language) }
+
+    /** 替换整个自定义模型列表（覆盖写）。调用方应预先调用 [CustomImageModels.normalize] 归一化。 */
+    suspend fun setCustomImageModels(models: List<CustomImageModel>) =
+        update { it.copy(customImageModels = CustomImageModels.normalize(models)) }
 }
 
 object SettingsDefaults {

@@ -5,14 +5,21 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.gptimage.playground.data.model.HistoryItem
+import com.gptimage.playground.data.model.PromptTemplate
+import com.gptimage.playground.data.model.PromptTemplateCategory
 
 @Database(
-    entities = [HistoryItem::class],
-    version = 1,
+    entities = [
+        HistoryItem::class,
+        PromptTemplateCategory::class,
+        PromptTemplate::class
+    ],
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
+    abstract fun promptTemplateDao(): PromptTemplateDao
 
     companion object {
         @Volatile

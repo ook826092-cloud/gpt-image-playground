@@ -10,12 +10,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.gptimage.playground.PlaygroundApp
 import com.gptimage.playground.ui.i18n.LocalStrings
 import com.gptimage.playground.ui.screens.album.AlbumScreen
 import com.gptimage.playground.ui.screens.settings.SettingsScreen
@@ -25,6 +27,8 @@ import com.gptimage.playground.ui.screens.workbench.WorkbenchScreen
 fun AppRoot(modifier: Modifier = Modifier) {
     val navController = rememberNavController()
     val strings = LocalStrings.current
+    val app = LocalContext.current.applicationContext as PlaygroundApp
+    val pendingReferenceBus = app.locator.pendingReferenceBus
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
@@ -65,12 +69,23 @@ fun AppRoot(modifier: Modifier = Modifier) {
         ) {
             composable(AppDestination.WORKBENCH.route) {
                 WorkbenchScreen(
-                    onNavigateToSettings = { navController.navigate(AppDestination.SETTINGS.route) }
+                    onNavigateToSettings = { navController.navigate(AppDestination.SETTINGS.route) },
+                    pendingReferenceBus = pendingReferenceBus
                 )
             }
             composable(AppDestination.ALBUM.route) {
                 AlbumScreen(
-                    onNavigateToSettings = { navController.navigate(AppDestination.SETTINGS.route) }
+                    onNavigateToSettings = { navController.navigate(AppDestination.SETTINGS.route) },
+                    onSendToWorkbench = { item, sendToEdit ->
+                        pendingReferenceBus.request(item, sendToEdit)
+                        navController.navigate(AppDestination.WORKBENCH.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
                 )
             }
             composable(AppDestination.SETTINGS.route) {

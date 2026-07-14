@@ -78,15 +78,29 @@ jobs:
           restore-keys: |
             android-gradle-${{ runner.os }}-
 
-      - name: Cache release keystore (auto-generated, stable across builds)
+      - name: Restore release keystore from GitHub Secret (preferred)
+        if: env.RELEASE_KEYSTORE_BASE64 != ''
+        working-directory: android
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "${RELEASE_KEYSTORE_BASE64}" | base64 -d > release.keystore
+          echo "::notice::Restored release.keystore from GitHub Secret RELEASE_KEYSTORE_BASE64. Signature will be stable across builds and runners."
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+
+      - name: Cache fallback keystore (only used when secret is absent)
+        if: env.RELEASE_KEYSTORE_BASE64 == ''
         id: cache-keystore
         uses: actions/cache@v4
         with:
           path: android/release.keystore
-          key: release-keystore-v1
+          key: release-keystore-fallback-v1
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
 
-      - name: Generate release keystore if missing
-        if: steps.cache-keystore.outputs.cache-hit != 'true'
+      - name: Generate fallback release keystore (only when secret absent AND cache miss)
+        if: env.RELEASE_KEYSTORE_BASE64 == '' && steps.cache-keystore.outputs.cache-hit != 'true'
         working-directory: android
         shell: bash
         run: |
@@ -98,7 +112,9 @@ jobs:
             -storepass "${KEYSTORE_PASSWORD}" \
             -keypass "${KEY_PASSWORD}" \
             -dname "CN=GPT Image Playground, OU=CI Auto Signed, O=Open Source, L=Remote, ST=Remote, C=CN"
-          echo "::notice::Generated new release.keystore (RSA 2048, 100-year validity). Cached for future builds so APK upgrade will work."
+          echo "::warning::RELEASE_KEYSTORE_BASE64 secret is not set. Generated a fallback keystore. Signature will be stable only as long as the cache survives; recommend uploading the local keystore to GitHub Secrets for permanent stability."
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
 
       - name: Grant execute permission for gradlew
         run: chmod +x android/gradlew

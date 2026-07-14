@@ -7,7 +7,9 @@ import com.gptimage.playground.data.datastore.SettingsStore
 import com.gptimage.playground.data.network.ImageProviderService
 import com.gptimage.playground.data.repository.HistoryRepository
 import com.gptimage.playground.data.repository.ImageGenerationRepository
+import com.gptimage.playground.data.repository.PromptTemplateRepository
 import com.gptimage.playground.data.repository.SettingsRepository
+import com.gptimage.playground.ui.screens.workbench.PendingReferenceBus
 import java.io.File
 
 /**
@@ -38,6 +40,16 @@ class ServiceLocator(val context: Context) {
             rootDir = historyRootDir
         )
     }
+
+    val promptTemplateRepository: PromptTemplateRepository by lazy {
+        PromptTemplateRepository(AppDatabase.get(context.applicationContext).promptTemplateDao())
+    }
+
+    /**
+     * 跨页面共享的 [PendingReferenceBus]，用于「相册 → 用作参考图 / 发送到编辑」
+     * 流程把 [com.gptimage.playground.data.model.HistoryItem] 传给工作台。
+     */
+    val pendingReferenceBus: PendingReferenceBus by lazy { PendingReferenceBus() }
 
     private val providerService: ImageProviderService by lazy { ImageProviderService() }
 

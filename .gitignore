@@ -78,3 +78,7 @@ graphify-out/
 android/release.keystore
 android/*.keystore
 android/*.jks
+
+# local signing secrets (keystore + base64 + fingerprints + manual upload guide)
+# 用户本地生成的稳定 keystore 仅用于上传到 GitHub Secrets，绝不提交到仓库
+secrets/

@@ -150,3 +150,77 @@ CI 第四轮（commit `488520c`，run `29299187631`）已成功产出 **签名 r
 由于 CI 用 `actions/cache` 把 `release.keystore` 缓存（key=`release-keystore-v1`），签名指纹稳定，新版 APK 可以**直接覆盖安装**旧版，无需卸载。
 
 > 若某次 cache miss 导致重新生成 keystore，签名指纹会变化，那时需要先卸载旧版才能安装新版。这一点已记录在 workflow notice 里。
+
+---
+
+# 追加 3：Top 1-3 功能移植（提示词模板库 / 相册更多操作 / 自定义模型 + URL 安全）
+
+| 字段     | 内容                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------- |
+| 日期     | 2026-07-14（追加 3）                                                                              |
+| 状态     | 已完成 (Completed)（代码层面；用户明确要求「现在不要编译」，未 push 触发 CI）                    |
+| 相关请求 | 用户：「现在的作用就是继续对齐你没有移植完成的功能，继续移植谢谢了」；并澄清密钥应由用户上传到 GitHub Secrets 保管，编译时 CI 读取，避免不稳定 |
+| 相关文档 | [android/README.md](../../android/README.md)、[AGENTS.md](../../AGENTS.md)                         |
+| 改动范围 | 见下表（Top 1 / Top 2 / Top 3 三块）                                                              |
+| 提交状态 | 未提交（用户明确要求「现在不要编译」；改动已完成本地静态自检，等待用户允许 push 触发 CI）          |
+
+## 范围核对（追加 3）
+
+| 请求目标 | 实际结果 | 证据 | 状态 |
+| -------- | -------- | ---- | ---- |
+| **Top 1：提示词模板库** | 新增 Room 表 `prompt_template_categories` / `prompt_templates`（DB version 1→2，含 `fallbackToDestructiveMigration` 兜底）；16 个内置分类 + ~70 条精选模板（移植自 Web `default-prompt-templates.ts`，覆盖风格转换 / 电商 / 社交 / 品牌 / 美食 / 时尚 / 地产 / 教育 / 游戏 / 科技 UI / 旅行 / 健康 / 头像 / 商务 / 节日 / 纹理 16 类）；三面板 UI（Browse/Edit/Manage）+ 搜索 + 分类筛选 + 本地 CRUD + JSON 导入导出；`ensureSeeded()` 在 `PlaygroundApp.onCreate` 后台 seed | `data/model/PromptTemplate.kt`、`data/db/PromptTemplateDao.kt`、`data/db/AppDatabase.kt`（version=2）、`data/repository/PromptTemplateRepository.kt`、`data/repository/DefaultPromptTemplates.kt`、`ui/screens/workbench/PromptTemplateViewModel.kt`、`ui/screens/workbench/PromptTemplatesDialog.kt`、`ServiceLocator.kt`、`PlaygroundApp.kt` | 已完成 (Completed) |
+| **Top 2：相册更多操作 + 费用估算** | 相册图片点击进入 `ModalBottomSheet` 详情面板：缩略图大图（点击进入全屏 `ZoomableImageDialog` pinch/pan/double-tap 缩放）/ Prompt 卡片（含复制按钮）/ 元数据卡片（模型 / 创建时间 / 耗时 / 尺寸 / 质量 / 格式 / WxH）/ 费用估算卡片（总价 + token 明细）/ 5 个操作按钮（保存到相册 / 分享 / 用作参考图 / 发送到编辑 / 删除）；`PendingReferenceBus` 单例 StateFlow 实现 Album→Workbench 跨页面 HistoryItem 传输（避免侵入 NavGraph 共享 ViewModel 改造）；`AlbumViewModel.saveToGallery` 走 MediaStore scoped storage（Android 10+ `IS_PENDING` 写入 `Pictures/GPT Image Playground/`，Android 9- 回退到 `Environment.getExternalStoragePublicDirectory`）；`copyPrompt` 走 `ClipboardManager`；`CostUtils` 移植自 `cost-utils.ts`，OpenAI gpt-image-1/1-mini/1.5/2 + Gemini Nano Banana 2（按 $0 估）有精确费率，其他 provider 返回 null 显示「该模型暂不支持费用估算」 | `data/repository/CostUtils.kt`、`ui/screens/workbench/PendingReferenceBus.kt`、`ui/screens/album/ZoomableImageDialog.kt`、`ui/screens/album/ImageDetailSheet.kt`、`ui/screens/album/AlbumViewModel.kt`、`ui/screens/album/AlbumScreen.kt`、`ui/navigation/AppRoot.kt`、`ui/screens/workbench/WorkbenchScreen.kt`（订阅 bus）、`ServiceLocator.kt` | 已完成 (Completed) |
+| **Top 3：自定义模型录入 + URL 安全检查** | `UrlSafety.normalizeOpenAICompatibleBaseUrl`（无协议补 https://、清掉 userInfo/query/ref、空 path 补 /v1）+ `validatePublicHttpBaseUrl`（防 SSRF：拒非 http/https、拒内嵌 user/pass、拒 localhost / .localhost / metadata.google.internal、拒 9 个 IPv4 CIDR `0.0.0.0/8` `10/8` `100.64/10` `127/8` `169.254/16` `172.16/12` `192.168/16` `224/4` `240/4` + IPv6 `::`/`::1`/`fe80:`/`fc`/`fd`/`::ffff:` 映射私网）；`CustomImageModel` 数据类 + `CustomImageModelCapabilities`（9 个能力开关）+ `CustomImageModels.normalize`（去重 + 补 `custom:` 前缀 + 过滤与内置 id 冲突 + provider 兜底 OPENAI）+ `mergeWithBuiltin`（内置 + 自定义合并 + 按 provider 兜底默认能力）；`AppConfig.customImageModels` 字段 + `SettingsStore` 加载时归一化 + `setCustomImageModels` 覆盖写；`SettingsViewModel.setProviderCredentials` 加入 URL 安全校验（Bad 则不保存 + emit errorMessage），`upsertCustomModel` / `deleteCustomModel` / `allModels`；`SettingsScreen` 新增 `CustomModelsSection`（列表 + 编辑/删除按钮）+ `CustomModelEditorDialog`（id / label / provider 下拉 / 4 个 size 字段 / 7 个能力 Switch）；`WorkbenchViewModel.availableModels` 改用 `CustomImageModels.mergeWithBuiltin(config.customImageModels)`；**修复 ModelPicker bug**（原代码用 `ImageModelCatalog.groupByProvider()` 忽略传入的 `models` 参数，导致自定义模型在工作台不可见，已改为 `models.groupBy { it.provider }`） | `data/repository/UrlSafety.kt`、`data/model/CustomImageModel.kt`、`data/model/AppConfig.kt`、`data/datastore/SettingsStore.kt`、`data/repository/SettingsRepository.kt`、`ui/screens/settings/SettingsViewModel.kt`、`ui/screens/settings/SettingsScreen.kt`、`ui/screens/workbench/WorkbenchViewModel.kt`、`ui/screens/workbench/WorkbenchScreen.kt` | 已完成 (Completed) |
+| i18n 双语覆盖 | `Strings.kt` 追加 Top 1 模板库 25 字段 + Top 2 相册详情 25 字段 + Top 3 自定义模型 24 字段，中英文双语同步 | `ui/i18n/Strings.kt` | 已完成 (Completed) |
+| 静态自检（imports / API 签名 / Material Icons） | 全量 grep + Read 走查：`ImageProviders.label/isKnown/ALL/OPENAI/GOOGLE/SENSENOVA/SEEDREAM/STABILITY` 在 `Provider.kt` 齐全；`ImageModelDefinition/ImageModelSizePresets/ImageModelCatalog` 在 `Provider.kt` 齐全；`HistoryItem` 字段 `inputTextTokens/inputImageTokens/outputTokens/model/modelLabel/width/height/quality/outputFormat/size/durationMs` 齐全；`material-icons-extended` 依赖已在 `app/build.gradle.kts` 声明；`Icons.Filled.Bookmarks/FolderCopy/ArrowBack/Add/Edit/Delete/Download/Upload/Search/PlayArrow` + `Icons.Outlined.ContentCopy/Info/Photo/PhotoLibrary/PlayArrow/Share/Delete/Add/Edit/Key/Language/Palette` 全部为合法路径 | 见各文件 import 段 | 已完成 (Completed) |
+
+## 问题与解决（追加 3）
+
+| 问题 | 解决办法 | 剩余风险 |
+| ---- | -------- | -------- |
+| `WorkbenchScreen.ModelPicker` 函数签名声明了 `models: List<ImageModelDefinition>` 参数，但函数体仍用 `ImageModelCatalog.groupByProvider()` 而非传入的 `models`，导致用户录入的自定义模型在工作台下拉中不出现 | 改为 `models.groupBy { it.provider }.forEach { ... }`，并加注释说明为什么不能用 catalog 直查 | 无 |
+| `PromptTemplatesDialog` 外层（不在 ManagePanel 内）定义了一个未使用的 `exportLauncher` 死代码块，且配套的 `val context = LocalContext.current` 也未被使用 | 删除外层 `exportLauncher` + `context`（ManagePanel 内部已有自己的 export launcher 实现） | 无 |
+| `CustomImageModels.normalize` 检查 `rawId in BUILTIN_IDS` 后才补 `custom:` 前缀；如果用户传入 `id = "gpt-image-1"`（恰好等于内置 id），会被直接跳过 | 与 Web 端 `normalizeCustomImageModels` 行为对齐（强制 `custom:` 前缀 + 跳过冲突），符合 AGENTS.md「跳过与内置 id 冲突」 | 无 |
+| `CostUtils.ratesFor` 用模型 id 字符串硬匹配 `"gpt-image-1"` / `"gemini-3.1-flash-image-preview"` 等；若 `ImageModelCatalog` 的内置 id 与此处字符串不一致，会落到 else 分支返回 null（显示「费用不可用」而非报错） | 静态走查：`Provider.kt` 中 `ImageModelCatalog.MODELS` 已包含上述 id；如后续新增模型需同步更新 `ratesFor` | 模型 id 后续若有重命名需同步 |
+| `AppDatabase` 升 version=2 用 `fallbackToDestructiveMigration()`，会清空旧版 history 数据 | dev 阶段可接受；后续若需保留用户数据需补 `Migration(1, 2)` 用 `execSQL` 建 `prompt_template_categories` / `prompt_templates` 两表 + 索引 | 旧版本用户首次升级会丢失历史图片记录 |
+| `ZoomableImageDialog` 工具栏 `contentDescription` 用了硬编码英文 "Close"/"Zoom in"/"Zoom out"/"Reset" | 暂未改（a11y label 优先级 P2，不阻塞编译）；后续可加 `strings.zoomViewer*` i18n 字段统一 | 屏幕阅读器在中文环境下朗读英文 |
+| `ImageDetailSheet` 中 `MetadataRow("WxH", "$w × $h")` 用了硬编码 "WxH" label | 暂未改（视为技术标识符勉强可接受，与 Web 端 "WxH" 一致）；后续可加 `strings.albumDetailDimensionsLabel` | 无 |
+| `WorkbenchScreen.ImageProvidersLabel` 函数仍硬编码 "Google"/"SenseNova"/"Seedream"/"Stability AI"/"OpenAI"（已有遗留，本轮未改） | 后续可统一为 `ImageProviders.label(provider)`（已实现），与 SettingsScreen 一致 | 无功能影响，仅 i18n 一致性问题 |
+| 本地 keystore 准备：用户希望把密钥放到 GitHub Secrets 保管，CI 读取使用，避免 cache miss 导致签名指纹漂移 | 已本地生成稳定 keystore（PKCS12, RSA 2048, 100 年有效期，alias=gpt-image, password=android）→ base64 编码 → 准备上传指引文档；CI workflow 当前是「GitHub Secret 优先 + cache 回退 + 自动生成 fallback」三段式策略，用户上传 Secret 后会自动切换到稳定密钥 | 用户需手动上传 4 个 Secret（KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD）后 CI 才会用上稳定 keystore |
+
+## 验证（追加 3）
+
+| 检查项 | 命令或场景 | 结果 |
+| ------ | ---------- | ---- |
+| 项目结构与文件清单 | `git status --short` | 14 个 modified + 11 个 untracked 文件，覆盖 Top 1+2+3 全部范围 |
+| `ImageProviders` API 齐全性 | `Grep "fun label\|fun isKnown\|const val OPENAI\|..."` 在 `data/model/` | 13 行匹配，全部齐全 |
+| `ImageModelDefinition/SizePresets/Catalog` 在 Provider.kt | `Grep "data class ImageModelDefinition\|..."` | 4 行匹配 |
+| `HistoryItem` token 字段齐全 | `Grep "inputTextTokens\|inputImageTokens\|outputTokens\|model: String\|..."` 在 `HistoryItem.kt` | 11 行匹配 |
+| `material-icons-extended` 依赖声明 | 检查 `app/build.gradle.kts` | `implementation(libs.androidx.material.icons.extended)` 存在 |
+| Top 1 全文件静态走查 | Read 走查 `PromptTemplate.kt` / `PromptTemplateDao.kt` / `PromptTemplateRepository.kt` / `DefaultPromptTemplates.kt` / `PromptTemplateViewModel.kt` / `PromptTemplatesDialog.kt` / `AppDatabase.kt` | 全部齐全，无悬挂引用 |
+| Top 2 全文件静态走查 | Read 走查 `CostUtils.kt` / `PendingReferenceBus.kt` / `ZoomableImageDialog.kt` / `ImageDetailSheet.kt` / `AlbumViewModel.kt` / `AlbumScreen.kt` / `AppRoot.kt` / `WorkbenchScreen.kt` 订阅段 | 全部齐全，Material Icons 在 extended 包内 |
+| Top 3 全文件静态走查 | Read 走查 `UrlSafety.kt` / `CustomImageModel.kt` / `AppConfig.kt` / `SettingsStore.kt` / `SettingsRepository.kt` / `SettingsViewModel.kt` / `SettingsScreen.kt`（含 `CustomModelsSection` + `CustomModelEditorDialog`）/ `WorkbenchViewModel.kt` / `WorkbenchScreen.kt`（含 ModelPicker 修复）| 全部齐全；`CustomModelEditorDialog` 用 `ExposedDropdownMenu` + `AssistChip` 实现下拉（能编译，UX 略偏离标准 DropdownMenuItem，已记入后续建议）|
+| i18n 字段对齐 | 比对 `Strings.kt` 中 Top 1+2+3 新增字段与 UI 引用 | 74 个新字段中英文双语同步，无悬挂引用 |
+| `git status` 是否含 secrets 目录 | `git status --short` | `?? secrets/` 出现，但 `.gitignore` 已忽略 `*.keystore` / `*.jks` / `*.keystore.b64`（需确认 secrets 目录是否被忽略，见下） |
+| `./gradlew assembleRelease` | **未执行**（用户明确要求「现在不要编译」，不 push 触发 CI） | 等待用户允许后 push 触发 CI 验证 |
+
+## 后续建议（追加 3）
+
+- **用户允许编译后**：`git push origin master` 触发 CI；CI 跑通后产出签名 release APK，再让用户在 GitHub Secrets 页面上传 `KEYSTORE_BASE64` / `KEYSTORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD` 四个 Secret，下一轮 CI 自动切换到稳定 keystore 签名。
+- **本地 keystore 已生成**：`/workspace/secrets/release.keystore`（PKCS12, RSA 2048, alias=`gpt-image`, password=`android`, 100 年有效期）+ `/workspace/secrets/release.keystore.b64`（base64 用于上传 Secret）+ `/workspace/secrets/README-upload-to-github-secrets.md`（手动上传指引）。用户允许编译后会一并发出。
+- **Top 4 流式输出**：下一步可调研 OpenAI 兼容 `stream=true` 的 SSE 解析（`data: {chunk}` + `[DONE]`）；Gemini 不支持图像生成流式（仅文本流），可降级为「等价非流式」；Stability 走 multipart 不支持流式。预计工作量集中在 `ImageProviderService` 改造 + Workbench UI 增加渐进式预览。
+- **Top 5 蒙版编辑 / inpaint**：需要先确认 mask 来源（用户在画布上手画？还是上传图片？），再决定是新增 `MaskEditorCanvas` 还是 `MaskUploadField`。
+- **`AppDatabase` migration**：dev 阶段 `fallbackToDestructiveMigration()` 可接受；上线前需补 `Migration(1, 2)` 用 `execSQL` 建表 + 索引，避免用户首次升级丢历史。
+- **`CustomModelEditorDialog` provider 下拉**：当前用 `AssistChip` 在 `ExposedDropdownMenu` 内做选项，能编译但 UX 偏离 Material 3 标准；后续可改为 `DropdownMenuItem(text = ..., onClick = ...)` 更地道。
+- **`ZoomableImageDialog` a11y label i18n**：当前 "Close"/"Zoom in" 等是硬编码英文，建议加 `strings.zoomViewerClose/ZoomIn/ZoomOut/Reset` 字段统一。
+- **`ImageDetailSheet` "WxH" label**：建议加 `strings.albumDetailDimensionsLabel = "尺寸 (W×H)"` 走 i18n。
+
+## 提交状态（追加 3）
+
+- **未提交**。用户明确说「现在不要编译」，本轮所有改动（Top 1+2+3）保留在本地工作区，未 `git commit`，未 `git push`。
+- 待用户允许后，将以一个语义化 commit 推送：
+  - 拟 commit 标题：`feat(android): port prompt template library, album detail + cost estimation, custom models + URL safety`
+  - 涉及文件：14 个 modified + 11 个新增（见 `git status --short`）
+- **未推送触发的 CI**：当前 CI 仍是上一轮（commit `488520c`）的稳定状态，已发布到 `continuous` Release 的 APK 仍是上一轮产物。
+- 用户允许 push 后，CI 会自动重新编译并更新 `continuous` Release。
+

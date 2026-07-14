@@ -1,6 +1,5 @@
 package com.gptimage.playground.ui.screens.album
 
-import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,24 +13,20 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -44,7 +39,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.gptimage.playground.PlaygroundApp
@@ -56,16 +50,20 @@ import java.io.File
 @Composable
 fun AlbumScreen(
     onNavigateToSettings: () -> Unit,
+    onSendToWorkbench: (HistoryItem, Boolean) -> Unit,
     viewModel: AlbumViewModel = viewModel(
         factory = AlbumViewModelFactory((LocalContext.current.applicationContext as PlaygroundApp).locator)
     )
 ) {
     val strings = LocalStrings.current
-    val context = LocalContext.current
     val images by viewModel.images.collectAsState()
 
     var activeTab by remember { mutableStateOf(0) }
-    var actionTarget by remember { mutableStateOf<HistoryItem?>(null) }
+    // 详情 BottomSheet 目标项
+    var detailTarget by remember { mutableStateOf<HistoryItem?>(null) }
+    // 全屏缩放目标项（path + contentDescription）
+    var zoomTarget by remember { mutableStateOf<HistoryItem?>(null) }
+    // 删除确认对话框目标项
     var deleteTarget by remember { mutableStateOf<HistoryItem?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -106,7 +104,7 @@ fun AlbumScreen(
                         items(images, key = { it.id }) { item ->
                             AlbumImageCell(
                                 item = item,
-                                onClick = { actionTarget = item }
+                                onClick = { detailTarget = item }
                             )
                         }
                     }
@@ -116,26 +114,35 @@ fun AlbumScreen(
         }
     }
 
-    actionTarget?.let { item ->
-        val sheetState = rememberModalBottomSheetState()
-        ModalBottomSheet(
-            onDismissRequest = { actionTarget = null },
-            sheetState = sheetState
-        ) {
-            AlbumItemActions(
-                item = item,
-                onShare = {
-                    shareImage(context, File(item.imagePath))
-                    actionTarget = null
-                },
-                onDelete = {
-                    deleteTarget = item
-                    actionTarget = null
-                }
-            )
-        }
+    // 详情 BottomSheet
+    detailTarget?.let { item ->
+        ImageDetailSheet(
+            item = item,
+            albumViewModel = viewModel,
+            onDismiss = { detailTarget = null },
+            onOpenZoom = {
+                zoomTarget = item
+            },
+            onSendToWorkbench = { historyItem, sendToEdit ->
+                detailTarget = null
+                onSendToWorkbench(historyItem, sendToEdit)
+            },
+            onDeleteRequest = { historyItem ->
+                deleteTarget = historyItem
+            }
+        )
     }
 
+    // 全屏缩放查看器
+    zoomTarget?.let { item ->
+        ZoomableImageDialog(
+            imagePath = item.imagePath,
+            contentDescription = item.prompt,
+            onDismiss = { zoomTarget = null }
+        )
+    }
+
+    // 删除确认对话框
     deleteTarget?.let { item ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
@@ -145,6 +152,7 @@ fun AlbumScreen(
                 TextButton(onClick = {
                     viewModel.delete(item)
                     deleteTarget = null
+                    detailTarget = null
                 }) { Text(strings.commonDelete) }
             },
             dismissButton = {
@@ -175,47 +183,6 @@ private fun AlbumImageCell(
 }
 
 @Composable
-private fun AlbumItemActions(
-    item: HistoryItem,
-    onShare: () -> Unit,
-    onDelete: () -> Unit
-) {
-    val strings = LocalStrings.current
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Text(item.modelLabel, style = MaterialTheme.typography.titleMedium)
-        Text(item.prompt, style = MaterialTheme.typography.bodySmall, maxLines = 3)
-        androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
-        ActionRow(icon = Icons.Outlined.Share, label = strings.albumShare, onClick = onShare)
-        ActionRow(icon = Icons.Outlined.Delete, label = strings.commonDelete, onClick = onDelete)
-    }
-}
-
-@Composable
-private fun ActionRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit
-) {
-    Surface(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp)),
-        color = androidx.compose.material3.MaterialTheme.colorScheme.surface
-    ) {
-        androidx.compose.material3.ListItem(
-            headlineContent = { Text(label) },
-            leadingContent = { Icon(icon, contentDescription = null) }
-        )
-    }
-}
-
-@Composable
 private fun AlbumEmptyState(message: String) {
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -240,16 +207,4 @@ private fun AlbumEmptyState(message: String) {
             )
         }
     }
-}
-
-private fun shareImage(context: android.content.Context, file: File) {
-    if (!file.exists()) return
-    val authority = "${context.packageName}.fileprovider"
-    val uri = FileProvider.getUriForFile(context, authority, file)
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "image/*"
-        putExtra(Intent.EXTRA_STREAM, uri)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-    context.startActivity(Intent.createChooser(intent, null))
 }

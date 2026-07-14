@@ -29,7 +29,12 @@ data class AppConfig(
     val defaultModelId: String = ImageModelCatalog.DEFAULT_MODEL_ID,
     val defaultSize: String? = null,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val language: AppLanguage = AppLanguage.SYSTEM
+    val language: AppLanguage = AppLanguage.SYSTEM,
+    /**
+     * 用户自定义模型列表。空列表表示无自定义模型。
+     * 加载时会通过 [CustomImageModels.normalize] 做向后兼容归一化。
+     */
+    val customImageModels: List<CustomImageModel> = emptyList()
 ) {
     fun credentialsFor(provider: ImageProviderId): ProviderCredentials = when (provider) {
         ImageProviders.GOOGLE -> google

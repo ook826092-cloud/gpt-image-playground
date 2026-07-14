@@ -3,6 +3,7 @@ package com.gptimage.playground.ui.screens.workbench
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,12 +27,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedButton
@@ -45,6 +48,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -57,6 +61,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -76,6 +82,7 @@ import com.gptimage.playground.ui.i18n.strings
 @Composable
 fun WorkbenchScreen(
     onNavigateToSettings: () -> Unit,
+    pendingReferenceBus: PendingReferenceBus? = null,
     viewModel: WorkbenchViewModel = viewModel(
         factory = WorkbenchViewModelFactory((LocalContext.current.applicationContext as PlaygroundApp).locator)
     )
@@ -83,6 +90,24 @@ fun WorkbenchScreen(
     val state by viewModel.state.collectAsState()
     val strings = LocalStrings.current
     val context = LocalContext.current
+    var showTemplatesDialog by remember { mutableStateOf(false) }
+
+    // 订阅「相册 → 用作参考图 / 发送到编辑」的跨页面传输。
+    // 当用户在相册点对应按钮时，bus.pending 会变成非 null，
+    // 这里在 Composable 第一次进入 composition + bus 有 pending 时消费一次。
+    androidx.compose.runtime.LaunchedEffect(pendingReferenceBus) {
+        val bus = pendingReferenceBus ?: return@LaunchedEffect
+        bus.pending.collect { pending ->
+            if (pending != null) {
+                if (pending.sendToEdit) {
+                    viewModel.sendToEdit(pending.item)
+                } else {
+                    viewModel.useHistoryItemAsReference(pending.item)
+                }
+                bus.consume()
+            }
+        }
+    }
 
     val photoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 6)
@@ -114,6 +139,7 @@ fun WorkbenchScreen(
             PromptField(
                 value = state.prompt,
                 onValueChange = viewModel::updatePrompt,
+                onOpenTemplates = { showTemplatesDialog = true },
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -134,6 +160,7 @@ fun WorkbenchScreen(
                 onFormatChange = viewModel::setOutputFormat,
                 onBackgroundChange = viewModel::setBackground,
                 onModerationChange = viewModel::setModeration,
+                onStreamingToggle = viewModel::setStreamingEnabled,
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -150,8 +177,10 @@ fun WorkbenchScreen(
             GenerateButton(
                 enabled = state.prompt.isNotBlank() && state.providerConfigured && !state.isGenerating,
                 isGenerating = state.isGenerating,
+                isStreaming = state.isStreaming,
                 isEdit = state.referenceImages.isNotEmpty(),
                 onClick = viewModel::generate,
+                onCancel = viewModel::cancelGenerate,
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -166,10 +195,29 @@ fun WorkbenchScreen(
                 ErrorBanner(message = err, onDismiss = viewModel::clearError, modifier = Modifier.fillMaxWidth())
             }
 
-            ResultPreview(item = state.lastResult, modifier = Modifier.fillMaxWidth())
+            ResultPreview(
+                item = state.lastResult,
+                isStreaming = state.isStreaming,
+                streamingPreview = state.streamingPreview,
+                streamingPartialIndex = state.streamingPartialIndex,
+                streamingImageIndex = state.streamingImageIndex,
+                streamingStartedAt = state.streamingStartedAt,
+                modifier = Modifier.fillMaxWidth()
+            )
 
             Spacer(Modifier.size(48.dp))
         }
+    }
+
+    if (showTemplatesDialog) {
+        PromptTemplatesDialog(
+            currentPrompt = state.prompt,
+            onApplyTemplate = { prompt ->
+                viewModel.updatePrompt(prompt)
+                showTemplatesDialog = false
+            },
+            onDismiss = { showTemplatesDialog = false }
+        )
     }
 }
 
@@ -177,18 +225,37 @@ fun WorkbenchScreen(
 private fun PromptField(
     value: String,
     onValueChange: (String) -> Unit,
+    onOpenTemplates: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val strings = LocalStrings.current
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = 120.dp, max = 240.dp),
-        placeholder = { Text(strings.workbenchPromptPlaceholder) },
-        shape = RoundedCornerShape(16.dp)
-    )
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(onClick = onOpenTemplates) {
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Filled.List,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.size(4.dp))
+                Text(strings.templatesOpen)
+            }
+        }
+        Spacer(Modifier.size(4.dp))
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 120.dp, max = 240.dp),
+            placeholder = { Text(strings.workbenchPromptPlaceholder) },
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -221,7 +288,9 @@ private fun ModelPicker(
             expanded = expanded,
             onDismissRequest = { expanded = false }
         ) {
-            ImageModelCatalog.groupByProvider().forEach { (provider, modelsForProvider) ->
+            // 用传入的合并后 models（内置 + 自定义），而不是 ImageModelCatalog.groupByProvider()。
+            // 否则用户录入的自定义模型不会出现在工作台的下拉里。
+            models.groupBy { it.provider }.forEach { (provider, modelsForProvider) ->
                 if (modelsForProvider.isNotEmpty()) {
                     Text(
                         text = ImageProvidersLabel(provider),
@@ -268,6 +337,7 @@ private fun AdvancedSection(
     onFormatChange: (String?) -> Unit,
     onBackgroundChange: (String?) -> Unit,
     onModerationChange: (String?) -> Unit,
+    onStreamingToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val strings = LocalStrings.current
@@ -297,6 +367,13 @@ private fun AdvancedSection(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    // 流式预览开关：仅当模型 supportsStreaming 时显示
+                    if (model.supportsStreaming) {
+                        StreamingToggleRow(
+                            enabled = state.streamingEnabled,
+                            onToggle = onStreamingToggle
+                        )
+                    }
                     if (model.supportsCustomSize || model.sizePresets != null) {
                         SizeSection(model = model, current = state.size, onChange = onSizeChange)
                     }
@@ -336,6 +413,40 @@ private fun AdvancedSection(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun StreamingToggleRow(
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit
+) {
+    val strings = LocalStrings.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.Bolt,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = strings.workbenchStreamingTitle,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = strings.workbenchStreamingHint,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = enabled,
+            onCheckedChange = onToggle
+        )
     }
 }
 
@@ -507,29 +618,70 @@ private fun AddReferenceButton(onClick: () -> Unit) {
 private fun GenerateButton(
     enabled: Boolean,
     isGenerating: Boolean,
+    isStreaming: Boolean,
     isEdit: Boolean,
     onClick: () -> Unit,
+    onCancel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val strings = LocalStrings.current
-    Button(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = modifier.heightIn(min = 52.dp),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        if (isGenerating) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(20.dp),
-                strokeWidth = 2.dp,
-                color = MaterialTheme.colorScheme.onPrimary
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(strings.workbenchGenerating)
-        } else {
-            Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text(if (isEdit) strings.commonEdit else strings.workbenchGenerate)
+    // 流式进行中显示「停止」按钮，否则显示「生成」按钮
+    if (isStreaming) {
+        Row(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // 流式进行中仍保留一个不可点击的「生成中」状态指示，便于用户看清当前在生成
+            Button(
+                onClick = {},
+                enabled = false,
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 52.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(strings.workbenchStreaming)
+            }
+            Button(
+                onClick = onCancel,
+                modifier = Modifier.heightIn(min = 52.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                )
+            ) {
+                Icon(Icons.Outlined.Stop, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(strings.workbenchStop)
+            }
+        }
+    } else {
+        Button(
+            onClick = onClick,
+            enabled = enabled,
+            modifier = modifier.heightIn(min = 52.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            if (isGenerating) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(strings.workbenchGenerating)
+            } else {
+                Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (isEdit) strings.commonEdit else strings.workbenchGenerate)
+            }
         }
     }
 }
@@ -606,9 +758,81 @@ private fun ErrorBanner(
 @Composable
 private fun ResultPreview(
     item: com.gptimage.playground.data.model.HistoryItem?,
+    isStreaming: Boolean,
+    streamingPreview: android.graphics.Bitmap?,
+    streamingPartialIndex: Int,
+    streamingImageIndex: Int,
+    streamingStartedAt: Long,
     modifier: Modifier = Modifier
 ) {
     val strings = LocalStrings.current
+    if (isStreaming) {
+        // 流式预览：优先展示 partial bitmap；如果有 lastResult 也保留 completed 的提示
+        Surface(
+            modifier = modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = strings.workbenchStreamingPreviewTitle,
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (streamingPartialIndex > 0) {
+                        Text(
+                            text = strings.workbenchStreamingPartialFormat(streamingPartialIndex),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                Spacer(Modifier.size(8.dp))
+                if (streamingPreview != null) {
+                    Image(
+                        bitmap = streamingPreview.asImageBitmap(),
+                        contentDescription = strings.workbenchStreamingPreviewTitle,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp)),
+                        contentScale = ContentScale.Fit
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = strings.workbenchStreamingWaiting,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                if (streamingStartedAt > 0L) {
+                    val elapsedMs = System.currentTimeMillis() - streamingStartedAt
+                    val seconds = (elapsedMs / 1000).coerceAtLeast(0)
+                    Spacer(Modifier.size(4.dp))
+                    Text(
+                        text = strings.workbenchStreamingElapsed(seconds.toInt()),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+        return
+    }
+
     if (item == null) {
         Surface(
             modifier = modifier
