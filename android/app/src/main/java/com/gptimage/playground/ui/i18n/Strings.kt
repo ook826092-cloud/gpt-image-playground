@@ -215,7 +215,57 @@ data class Strings(
     val customModelsSupportsStreaming: String,
     val customModelsSave: String,
     val customModelsDelete: String,
-    val customModelsIdRequired: String
+    val customModelsIdRequired: String,
+
+    // —— 聊天式工作台 ——
+    /** 空状态标题：用户进入工作台但还没生成过任何图像 */
+    val chatEmptyTitle: String,
+    /** 空状态副标题：提示用户输入提示词或加参考图 */
+    val chatEmptySubtitle: String,
+    /** 输入框占位符（对话式） */
+    val chatInputPlaceholder: String,
+    /** 发送按钮 */
+    val chatSend: String,
+    /** 生成中标签（出现在助手气泡上） */
+    val chatGenerating: String,
+    /** 流式生成中标签 */
+    val chatStreaming: String,
+    /** 等待首张 partial 图出现 */
+    val chatStreamingWaiting: String,
+    /** 单条生成失败时的标题 */
+    val chatTurnError: String,
+    /** 单条生成已取消时的标签 */
+    val chatTurnCanceled: String,
+    /** 助手气泡上的「重试」按钮 */
+    val chatTurnRetry: String,
+    /** 助手气泡上的「保存到相册」按钮 */
+    val chatTurnSaveToAlbum: String,
+    /** 助手气泡上的「已保存」标签 */
+    val chatTurnSaved: String,
+    /** 助手气泡上的「用作参考」按钮 */
+    val chatTurnUseAsReference: String,
+    /** 助手气泡上的「去编辑」按钮 */
+    val chatTurnSendToEdit: String,
+    /** 助手气泡上的「分享」按钮 */
+    val chatTurnShare: String,
+    /** 输入框上方「参考图(N)」chip 标签 */
+    val chatReferencesChip: (Int) -> String,
+    /** 输入框上方「高级参数」chip 标签 */
+    val chatAdvancedChip: String,
+    /** 输入框上方「蒙版」chip 标签 */
+    val chatMaskChip: String,
+    /** 输入框上方「模型」chip 标签 */
+    val chatModelChip: String,
+    /** 模型尚未配置的提示 chip（点击进设置） */
+    val chatProviderMissing: String,
+    /** 已绘制蒙版但未保存时阻止发送的提示 */
+    val chatMaskUnsavedHint: String,
+    /** 输入框上方「清空对话」按钮 */
+    val chatClearAll: String,
+    /** 清空对话的确认标题 */
+    val chatClearAllConfirm: String,
+    /** 清空对话的确认正文 */
+    val chatClearAllConfirmBody: String
 )
 
 val ChineseStrings = Strings(
@@ -419,7 +469,33 @@ val ChineseStrings = Strings(
     customModelsSupportsStreaming = "流式输出",
     customModelsSave = "保存模型",
     customModelsDelete = "删除",
-    customModelsIdRequired = "模型 ID 不能为空"
+    customModelsIdRequired = "模型 ID 不能为空",
+
+    // —— 聊天式工作台 ——
+    chatEmptyTitle = "开始创作",
+    chatEmptySubtitle = "输入提示词生成图像；或先添加参考图，进行 inpaint 局部编辑。",
+    chatInputPlaceholder = "描述你想要的图片…",
+    chatSend = "发送",
+    chatGenerating = "正在生成…",
+    chatStreaming = "流式生成中…",
+    chatStreamingWaiting = "等待首张图返回…",
+    chatTurnError = "生成失败",
+    chatTurnCanceled = "已取消",
+    chatTurnRetry = "重试",
+    chatTurnSaveToAlbum = "保存",
+    chatTurnSaved = "已保存",
+    chatTurnUseAsReference = "用作参考",
+    chatTurnSendToEdit = "去编辑",
+    chatTurnShare = "分享",
+    chatReferencesChip = { count -> "参考图 $count" },
+    chatAdvancedChip = "高级",
+    chatMaskChip = "蒙版",
+    chatModelChip = "模型",
+    chatProviderMissing = "未配置供应商，点击设置",
+    chatMaskUnsavedHint = "请先保存已绘制的蒙版",
+    chatClearAll = "清空对话",
+    chatClearAllConfirm = "清空对话？",
+    chatClearAllConfirmBody = "将清除当前所有对话与结果，操作不可撤销。"
 )
 
 val EnglishStrings = Strings(
@@ -623,7 +699,33 @@ val EnglishStrings = Strings(
     customModelsSupportsStreaming = "Streaming output",
     customModelsSave = "Save model",
     customModelsDelete = "Delete",
-    customModelsIdRequired = "Model ID cannot be empty"
+    customModelsIdRequired = "Model ID cannot be empty",
+
+    // —— Chat-style workbench ——
+    chatEmptyTitle = "Start creating",
+    chatEmptySubtitle = "Type a prompt to generate an image, or attach references for inpaint editing.",
+    chatInputPlaceholder = "Describe the image you want…",
+    chatSend = "Send",
+    chatGenerating = "Generating…",
+    chatStreaming = "Streaming…",
+    chatStreamingWaiting = "Waiting for first image…",
+    chatTurnError = "Generation failed",
+    chatTurnCanceled = "Canceled",
+    chatTurnRetry = "Retry",
+    chatTurnSaveToAlbum = "Save",
+    chatTurnSaved = "Saved",
+    chatTurnUseAsReference = "Use as ref",
+    chatTurnSendToEdit = "Edit",
+    chatTurnShare = "Share",
+    chatReferencesChip = { count -> "Refs $count" },
+    chatAdvancedChip = "Advanced",
+    chatMaskChip = "Mask",
+    chatModelChip = "Model",
+    chatProviderMissing = "No provider configured, tap to set up",
+    chatMaskUnsavedHint = "Please save the drawn mask first",
+    chatClearAll = "Clear chat",
+    chatClearAllConfirm = "Clear chat?",
+    chatClearAllConfirmBody = "This will remove all turns and results. This action cannot be undone."
 )
 
 fun AppLanguage.toStrings(): Strings = when (this) {

@@ -1,9 +1,14 @@
 package com.gptimage.playground.ui.screens.album
 
 import android.content.Intent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -12,40 +17,36 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -57,6 +58,10 @@ import com.gptimage.playground.data.model.HistoryItem
 import com.gptimage.playground.data.repository.CostUtils
 import com.gptimage.playground.ui.i18n.LocalStrings
 import com.gptimage.playground.ui.i18n.Strings
+import com.gptimage.playground.ui.theme.AppCorner
+import com.gptimage.playground.ui.theme.AppElevation
+import com.gptimage.playground.ui.theme.ContentPadding
+import com.gptimage.playground.ui.theme.Spacing
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
@@ -66,15 +71,7 @@ import java.util.Locale
 /**
  * 详情 BottomSheet。展示图片元数据、prompt、费用估算，以及操作按钮组。
  *
- * 替代了原有的简陋 [AlbumItemActions]：
- * - 缩略图大图（点击进入全屏 ZoomableImageDialog）
- * - Prompt 卡片（带复制按钮）
- * - 元数据卡片（模型 / 尺寸 / 质量 / 格式 / 创建时间 / 耗时）
- * - 费用估算卡片（token 用量 + 总价 + 单项明细）
- * - 操作按钮组：保存到相册 / 分享 / 用作参考图 / 发送到编辑 / 删除
- *
- * @param onSendToWorkbench 用户点击「用作参考图」(sendToEdit=false) 或「发送到编辑」(sendToEdit=true)
- *                          时回调。AlbumScreen 应当导航到工作台并清空当前 BottomSheet。
+ * 视觉规则对齐新 iOS 风：白底圆角卡片 + 极浅 outline + 圆形操作 icon。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,6 +87,7 @@ fun ImageDetailSheet(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val cs = MaterialTheme.colorScheme
 
     val saveStatus by albumViewModel.saveToGalleryStatus.collectAsState()
     val copyStatus by albumViewModel.copyPromptStatus.collectAsState()
@@ -114,6 +112,7 @@ fun ImageDetailSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        shape = AppCorner.sheet,
         modifier = Modifier.fillMaxWidth()
     ) {
         SnackbarHost(hostState = snackbarHostState, modifier = Modifier.padding(8.dp))
@@ -121,16 +120,13 @@ fun ImageDetailSheet(
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = ContentPadding.screen)
                 .navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(Spacing.md),
+            contentPadding = PaddingValues(bottom = 24.dp)
         ) {
             item {
-                DetailHeader(
-                    item = item,
-                    strings = strings,
-                    onClickImage = onOpenZoom
-                )
+                DetailHeader(item = item, strings = strings, onClickImage = onOpenZoom)
             }
             item { DetailPromptCard(item = item, strings = strings, onCopy = { albumViewModel.copyPrompt(item) }) }
             item { DetailMetadataCard(item = item, strings = strings) }
@@ -142,20 +138,11 @@ fun ImageDetailSheet(
                     onSaveToGallery = {
                         scope.launch { albumViewModel.saveToGallery(item) }
                     },
-                    onShare = {
-                        shareImage(context, File(item.imagePath))
-                    },
-                    onUseAsReference = {
-                        onSendToWorkbench(item, false)
-                    },
-                    onSendToEdit = {
-                        onSendToWorkbench(item, true)
-                    },
-                    onDelete = {
-                        onDeleteRequest(item)
-                    }
+                    onShare = { shareImage(context, File(item.imagePath)) },
+                    onUseAsReference = { onSendToWorkbench(item, false) },
+                    onSendToEdit = { onSendToWorkbench(item, true) },
+                    onDelete = { onDeleteRequest(item) }
                 )
-                Spacer(Modifier.size(24.dp))
             }
         }
     }
@@ -167,13 +154,19 @@ private fun DetailHeader(
     strings: Strings,
     onClickImage: () -> Unit
 ) {
+    val cs = MaterialTheme.colorScheme
     Column {
-        Surface(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(if ((item.width ?: 1) >= (item.height ?: 1)) 1.5f else 0.75f)
-                .clip(RoundedCornerShape(16.dp)),
-            onClick = onClickImage
+                .shadow(AppElevation.card, AppCorner.card)
+                .clip(AppCorner.card)
+                .background(cs.surface)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = ripple(bounded = true)
+                ) { onClickImage() }
         ) {
             AsyncImage(
                 model = File(item.imagePath),
@@ -186,8 +179,26 @@ private fun DetailHeader(
         Text(
             text = strings.albumDetailZoomHint,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = cs.onSurfaceVariant
         )
+    }
+}
+
+/**
+ * iOS 风白底圆角卡片容器：纯白 + 0.5dp outline + 极浅阴影。
+ */
+@Composable
+private fun DetailCard(content: @Composable () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(AppElevation.card, AppCorner.card)
+            .clip(AppCorner.card)
+            .background(cs.surface)
+            .border(0.5.dp, cs.outlineVariant, AppCorner.card)
+    ) {
+        content()
     }
 }
 
@@ -197,28 +208,35 @@ private fun DetailPromptCard(
     strings: Strings,
     onCopy: () -> Unit
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+    val cs = MaterialTheme.colorScheme
+    DetailCard {
+        Column(modifier = Modifier.padding(ContentPadding.card)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = strings.albumDetailPrompt,
-                    style = MaterialTheme.typography.titleSmall,
+                    text = strings.albumDetailPrompt.uppercase(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = cs.primary,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f)
                 )
-                IconButton(onClick = onCopy) {
-                    Icon(Icons.Outlined.ContentCopy, contentDescription = strings.albumDetailCopyPrompt)
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = ripple(bounded = true)
+                        ) { onCopy() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Outlined.ContentCopy, contentDescription = strings.albumDetailCopyPrompt, tint = cs.onSurfaceVariant, modifier = Modifier.size(16.dp))
                 }
             }
-            Spacer(Modifier.size(4.dp))
+            Spacer(Modifier.size(8.dp))
             Text(
                 text = item.prompt,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.bodyMedium,
+                color = cs.onSurface,
                 modifier = Modifier.heightIn(max = 200.dp)
             )
         }
@@ -230,20 +248,25 @@ private fun DetailMetadataCard(
     item: HistoryItem,
     strings: Strings
 ) {
+    val cs = MaterialTheme.colorScheme
     val dateFmt = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
     val createdAt = remember { dateFmt.format(Date(item.createdAt)) }
     val duration = item.durationMs?.let { CostUtils.formatDuration(it) } ?: "—"
 
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+    DetailCard {
+        Column(modifier = Modifier.padding(ContentPadding.card)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.Info, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.size(6.dp))
-                Text(strings.albumDetailMetadata, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clip(AppCorner.small)
+                        .background(cs.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Outlined.Info, contentDescription = null, tint = cs.onPrimaryContainer, modifier = Modifier.size(12.dp))
+                }
+                Spacer(Modifier.size(8.dp))
+                Text(strings.albumDetailMetadata.uppercase(), style = MaterialTheme.typography.labelMedium, color = cs.primary, fontWeight = FontWeight.SemiBold)
             }
             Spacer(Modifier.size(8.dp))
             MetadataRow(strings.albumDetailModel, item.modelLabel)
@@ -263,6 +286,7 @@ private fun DetailMetadataCard(
 
 @Composable
 private fun MetadataRow(label: String, value: String) {
+    val cs = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -272,12 +296,12 @@ private fun MetadataRow(label: String, value: String) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = cs.onSurfaceVariant
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = cs.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = 16.dp)
@@ -290,16 +314,14 @@ private fun DetailCostCard(
     item: HistoryItem,
     strings: Strings
 ) {
+    val cs = MaterialTheme.colorScheme
     val details = remember(item.id, item.outputTokens) { CostUtils.calculate(item) }
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+    DetailCard {
+        Column(modifier = Modifier.padding(ContentPadding.card)) {
             Text(
-                text = strings.albumDetailCost,
-                style = MaterialTheme.typography.titleSmall,
+                text = strings.albumDetailCost.uppercase(),
+                style = MaterialTheme.typography.labelMedium,
+                color = cs.primary,
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(Modifier.size(8.dp))
@@ -307,20 +329,20 @@ private fun DetailCostCard(
                 Text(
                     text = strings.albumDetailCostUnavailable,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = cs.onSurfaceVariant
                 )
             } else {
                 Text(
                     text = CostUtils.formatPrecise(details.estimatedCostUsd),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = cs.primary,
                     fontWeight = FontWeight.SemiBold
                 )
                 Spacer(Modifier.size(8.dp))
                 Text(
                     text = strings.albumDetailCostBreakdown,
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = cs.onSurfaceVariant
                 )
                 Spacer(Modifier.size(4.dp))
                 MetadataRow(strings.albumDetailTokenTextIn, "${details.textInputTokens}")
@@ -341,6 +363,7 @@ private fun DetailActions(
     onSendToEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val cs = MaterialTheme.colorScheme
     val actions: List<ActionItem> = listOf(
         ActionItem(Icons.Outlined.PhotoLibrary, strings.albumDetailSaveToGallery, onSaveToGallery),
         ActionItem(Icons.Outlined.Share, strings.albumDetailShare, onShare),
@@ -348,13 +371,23 @@ private fun DetailActions(
         ActionItem(Icons.Outlined.PlayArrow, strings.albumDetailSendToEdit, onSendToEdit),
         ActionItem(Icons.Outlined.Delete, strings.albumDetailDelete, onDelete, isDanger = true)
     )
-    actions.forEach { action ->
-        ActionRow(
-            icon = action.icon,
-            label = action.label,
-            onClick = action.onClick,
-            isDanger = action.isDanger
-        )
+    DetailCard {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            actions.forEachIndexed { idx, action ->
+                ActionRow(
+                    icon = action.icon,
+                    label = action.label,
+                    onClick = action.onClick,
+                    isDanger = action.isDanger
+                )
+                if (idx != actions.lastIndex) {
+                    HorizontalDivider(
+                        color = cs.outlineVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(horizontal = ContentPadding.card)
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -372,30 +405,33 @@ private fun ActionRow(
     onClick: () -> Unit,
     isDanger: Boolean = false
 ) {
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surface
+    val cs = MaterialTheme.colorScheme
+    val tint = if (isDanger) cs.error else cs.primary
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(bounded = true)
+            ) { onClick() }
+            .padding(horizontal = ContentPadding.card, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .size(28.dp)
+                .clip(AppCorner.small)
+                .background(if (isDanger) cs.errorContainer else cs.primaryContainer),
+            contentAlignment = Alignment.Center
         ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = if (isDanger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-            )
-            Spacer(Modifier.size(12.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (isDanger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-            )
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
         }
+        Spacer(Modifier.size(12.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (isDanger) cs.error else cs.onSurface
+        )
     }
 }
 

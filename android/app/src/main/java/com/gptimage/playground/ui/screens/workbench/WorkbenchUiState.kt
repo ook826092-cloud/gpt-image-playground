@@ -9,6 +9,38 @@ import com.gptimage.playground.data.model.ImageModeration
 import com.gptimage.playground.data.model.ImageOutputFormat
 import com.gptimage.playground.data.model.ImageQuality
 
+/**
+ * 聊天式工作台中的一次「对话回合」。
+ *
+ * - 用户发出一条 prompt（+ 可选参考图）→ 创建一个 status=GENERATING 的 turn
+ * - 流式 partial 进来时更新 [streamingPreviewBitmap] / [streamingPartialIndex]
+ * - 完成时更新 [resultItem]，streaming 字段清空，status 设为 SUCCESS
+ * - 失败：status=ERROR，[errorMessage] 填上原因
+ * - 取消：status=CANCELED
+ *
+ * 历史已完成的 turn 也会保留在 [WorkbenchUiState.turns] 中以列表形式渲染，
+ * 而最近一次「正在进行」的 turn 由 [WorkbenchUiState.lastResult]/streaming 等字段镜像同步（保持向后兼容）。
+ */
+data class ChatTurn(
+    val id: String,
+    val prompt: String,
+    /** 触发该回合时的参考图快照（用户在生成后追加/删除参考图不应影响历史气泡） */
+    val referenceImageUris: List<Uri>,
+    val modelLabel: String,
+    val createdAt: Long,
+    val status: TurnStatus,
+    /** 成功完成后的最终历史记录项（包含 imagePath、prompt、metadata 等） */
+    val resultItem: HistoryItem?,
+    /** 失败时的人类可读消息 */
+    val errorMessage: String?,
+    /** 流式预览图（仅 status=GENERATING 时有意义） */
+    val streamingPreviewBitmap: Bitmap?,
+    val streamingPartialIndex: Int,
+    val streamingStartedAt: Long
+)
+
+enum class TurnStatus { GENERATING, SUCCESS, ERROR, CANCELED }
+
 data class WorkbenchUiState(
     val prompt: String = "",
     val model: ImageModelDefinition? = null,
@@ -49,7 +81,9 @@ data class WorkbenchUiState(
     /** 已生成并保存的蒙版 PNG 字节。null 表示尚未保存或已清除。提交时封装为 [com.gptimage.playground.data.model.ReferenceImage]。 */
     val maskSavedBytes: ByteArray? = null,
     /** 蒙版是否已保存（[maskSavedBytes] 非空）。提交前若有未保存的点位会阻止提交。 */
-    val maskSaved: Boolean = false
+    val maskSaved: Boolean = false,
+    /** 聊天式工作台的所有回合。最后一个可能处于 GENERATING 状态（进行中）。 */
+    val turns: List<ChatTurn> = emptyList()
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -82,7 +116,8 @@ data class WorkbenchUiState(
             maskDrawnPoints == other.maskDrawnPoints &&
             maskBrushSize == other.maskBrushSize &&
             maskSaved == other.maskSaved &&
-            maskSavedBytes.contentEquals(other.maskSavedBytes)
+            maskSavedBytes.contentEquals(other.maskSavedBytes) &&
+            turns == other.turns
     }
 
     override fun hashCode(): Int {
@@ -114,6 +149,7 @@ data class WorkbenchUiState(
         result = 31 * result + maskBrushSize
         result = 31 * result + maskSaved.hashCode()
         result = 31 * result + (maskSavedBytes?.contentHashCode() ?: 0)
+        result = 31 * result + turns.hashCode()
         return result
     }
 }

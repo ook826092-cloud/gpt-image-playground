@@ -358,6 +358,22 @@ class WorkbenchViewModel(
             return
         }
 
+        // 创建一个新的对话回合，记录用户当前 prompt + 参考图快照 + 模型标签
+        val turn = ChatTurn(
+            id = "turn-${System.currentTimeMillis()}",
+            prompt = current.prompt,
+            referenceImageUris = current.referenceImages.map { it.uri },
+            modelLabel = model.label,
+            createdAt = System.currentTimeMillis(),
+            status = TurnStatus.GENERATING,
+            resultItem = null,
+            errorMessage = null,
+            streamingPreviewBitmap = null,
+            streamingPartialIndex = 0,
+            streamingStartedAt = 0L
+        )
+        local.update { it.copy(turns = it.turns + turn) }
+
         // 仅 OpenAI 系列且 model.supportsStreaming 时走流式；其他情况一律走非流式
         val useStreaming = current.streamingEnabled &&
             model.supportsStreaming &&
@@ -367,6 +383,58 @@ class WorkbenchViewModel(
             startStreamingGenerate(current, model)
         } else {
             startNonStreamingGenerate(current, model)
+        }
+    }
+
+    /**
+     * 重试一个失败/取消的回合：把该 turn 的 prompt + 参考图作为「草稿」回填到输入区，然后触发新一轮 generate。
+     * 注意：因为参考图快照只存了 Uri，重试时直接 add 回 referenceImages，如果用户期间清除了缓存可能加载失败。
+     */
+    fun retryTurn(turn: ChatTurn) {
+        if (state.value.isGenerating) return
+        local.update {
+            it.copy(
+                prompt = turn.prompt,
+                referenceImages = turn.referenceImageUris.map { uri ->
+                    ReferenceImageUi(uri, uri.lastPathSegment?.substringAfterLast('/') ?: "reference", "image/png")
+                }
+            )
+        }
+        generate()
+    }
+
+    /** 清空所有对话回合与最近的错误/结果镜像，重置为初始状态（保留 prompt 草稿与高级参数）。 */
+    fun clearTurns() {
+        local.update {
+            it.copy(
+                turns = emptyList(),
+                lastResult = null,
+                error = null,
+                isGenerating = false,
+                isStreaming = false,
+                streamingPreview = null,
+                streamingPartialIndex = 0,
+                streamingStartedAt = 0L
+            )
+        }
+        generateJob?.cancel()
+        generateJob = null
+    }
+
+    /**
+     * 更新 turns 列表中的最后一项。如果 turns 为空则 no-op。
+     * 用于流式 / 非流式生成过程中实时把 partial / completed / failure 同步到对应的 turn 气泡。
+     */
+    private fun updateLastTurn(transform: (ChatTurn) -> ChatTurn) {
+        local.update { state ->
+            val turns = state.turns
+            if (turns.isEmpty()) {
+                state
+            } else {
+                val lastIndex = turns.lastIndex
+                val updated = transform(turns[lastIndex])
+                state.copy(turns = turns.toMutableList().apply { set(lastIndex, updated) })
+            }
         }
     }
 
@@ -386,6 +454,16 @@ class WorkbenchViewModel(
                 streamingStartedAt = 0L
             )
         }
+        updateLastTurn { turn ->
+            if (turn.status == TurnStatus.GENERATING) {
+                turn.copy(
+                    status = TurnStatus.CANCELED,
+                    streamingPreviewBitmap = null,
+                    streamingPartialIndex = 0,
+                    streamingStartedAt = 0L
+                )
+            } else turn
+        }
     }
 
     fun clearError() = local.update { it.copy(error = null) }
@@ -393,6 +471,7 @@ class WorkbenchViewModel(
     private fun startNonStreamingGenerate(current: WorkbenchUiState, model: ImageModelDefinition) {
         viewModelScope.launch {
             local.update { it.copy(isGenerating = true, error = null) }
+            updateLastTurn { it.copy(streamingStartedAt = System.currentTimeMillis()) }
             val config = configFlow.value
             val credentials = config.credentialsFor(model.provider)
 
@@ -403,12 +482,32 @@ class WorkbenchViewModel(
             }
 
             when (outcome) {
-                is RepoGenerationOutcome.Success -> local.update {
-                    it.copy(isGenerating = false, lastResult = outcome.item, error = null)
+                is RepoGenerationOutcome.Success -> {
+                    local.update {
+                        it.copy(isGenerating = false, lastResult = outcome.item, error = null)
+                    }
+                    updateLastTurn {
+                        it.copy(
+                            status = TurnStatus.SUCCESS,
+                            resultItem = outcome.item,
+                            streamingPreviewBitmap = null,
+                            streamingPartialIndex = 0,
+                            streamingStartedAt = 0L
+                        )
+                    }
                 }
                 is RepoGenerationOutcome.Failure -> {
                     val message = errorMessage(outcome.error)
                     local.update { it.copy(isGenerating = false, error = message) }
+                    updateLastTurn {
+                        it.copy(
+                            status = TurnStatus.ERROR,
+                            errorMessage = message,
+                            streamingPreviewBitmap = null,
+                            streamingPartialIndex = 0,
+                            streamingStartedAt = 0L
+                        )
+                    }
                 }
             }
         }
@@ -471,6 +570,12 @@ class WorkbenchViewModel(
                     streamingStartedAt = startedAt
                 )
             }
+            updateLastTurn {
+                it.copy(
+                    status = TurnStatus.GENERATING,
+                    streamingStartedAt = startedAt
+                )
+            }
 
             try {
                 streamFlow.collect { event ->
@@ -483,6 +588,12 @@ class WorkbenchViewModel(
                                     streamingPartialIndex = event.partialImageIndex
                                 )
                             }
+                            updateLastTurn {
+                                it.copy(
+                                    streamingPreviewBitmap = bitmap,
+                                    streamingPartialIndex = event.partialImageIndex
+                                )
+                            }
                         }
 
                         is GenerationStreamEvent.Completed -> {
@@ -490,11 +601,22 @@ class WorkbenchViewModel(
                             local.update {
                                 it.copy(lastResult = event.item)
                             }
+                            updateLastTurn {
+                                it.copy(resultItem = event.item)
+                            }
                         }
 
                         is GenerationStreamEvent.Failure -> {
                             val message = errorMessage(event.error)
                             local.update { it.copy(error = message) }
+                            updateLastTurn {
+                                it.copy(
+                                    status = TurnStatus.ERROR,
+                                    errorMessage = message,
+                                    streamingPreviewBitmap = null,
+                                    streamingPartialIndex = 0
+                                )
+                            }
                         }
                     }
                 }
@@ -505,6 +627,14 @@ class WorkbenchViewModel(
                 local.update {
                     it.copy(error = e.message ?: "流式生成失败")
                 }
+                updateLastTurn {
+                    it.copy(
+                        status = TurnStatus.ERROR,
+                        errorMessage = e.message ?: "流式生成失败",
+                        streamingPreviewBitmap = null,
+                        streamingPartialIndex = 0
+                    )
+                }
             } finally {
                 local.update {
                     it.copy(
@@ -514,6 +644,17 @@ class WorkbenchViewModel(
                         streamingPartialIndex = 0,
                         streamingStartedAt = 0L
                     )
+                }
+                // 流式 collect 正常结束 + 没有 ERROR/CANCELED → 标记为 SUCCESS（保留 resultItem 如果有）
+                updateLastTurn { turn ->
+                    if (turn.status == TurnStatus.GENERATING) {
+                        turn.copy(
+                            status = TurnStatus.SUCCESS,
+                            streamingPreviewBitmap = null,
+                            streamingPartialIndex = 0,
+                            streamingStartedAt = 0L
+                        )
+                    } else turn
                 }
                 generateJob = null
             }
