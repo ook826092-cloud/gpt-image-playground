@@ -200,7 +200,6 @@ fun WorkbenchScreen(
                 isStreaming = state.isStreaming,
                 streamingPreview = state.streamingPreview,
                 streamingPartialIndex = state.streamingPartialIndex,
-                streamingImageIndex = state.streamingImageIndex,
                 streamingStartedAt = state.streamingStartedAt,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -761,7 +760,6 @@ private fun ResultPreview(
     isStreaming: Boolean,
     streamingPreview: android.graphics.Bitmap?,
     streamingPartialIndex: Int,
-    streamingImageIndex: Int,
     streamingStartedAt: Long,
     modifier: Modifier = Modifier
 ) {

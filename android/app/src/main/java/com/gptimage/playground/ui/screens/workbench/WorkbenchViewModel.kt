@@ -62,8 +62,11 @@ class WorkbenchViewModel(
             ?: availableModels.firstOrNull()
         val providerForModel = resolvedModel?.provider ?: ImageProviders.OPENAI
         val providerConfigured = config.credentialsFor(providerForModel).isConfigured
-        // 仅当模型支持流式时才允许 streamingEnabled 生效；否则强制为 false
-        val effectiveStreamingEnabled = current.streamingEnabled && resolvedModel?.supportsStreaming == true
+        // 仅当模型 supportsStreaming 且 provider == OPENAI 时才允许 streamingEnabled 生效；
+        // 其他情况强制为 false（避免 UI 显示流式开关但实际回退到非流式的不一致体验）
+        val effectiveStreamingEnabled = current.streamingEnabled &&
+            resolvedModel?.supportsStreaming == true &&
+            providerForModel == ImageProviders.OPENAI
         current.copy(
             availableModels = availableModels,
             model = resolvedModel,
@@ -164,7 +167,6 @@ class WorkbenchViewModel(
                 isStreaming = false,
                 streamingPreview = null,
                 streamingPartialIndex = 0,
-                streamingImageIndex = 0,
                 streamingStartedAt = 0L
             )
         }
@@ -249,7 +251,6 @@ class WorkbenchViewModel(
                     error = null,
                     streamingPreview = null,
                     streamingPartialIndex = 0,
-                    streamingImageIndex = 0,
                     streamingStartedAt = startedAt
                 )
             }
@@ -262,8 +263,7 @@ class WorkbenchViewModel(
                             local.update {
                                 it.copy(
                                     streamingPreview = bitmap,
-                                    streamingPartialIndex = event.partialImageIndex,
-                                    streamingImageIndex = event.imageIndex
+                                    streamingPartialIndex = event.partialImageIndex
                                 )
                             }
                         }
@@ -295,7 +295,6 @@ class WorkbenchViewModel(
                         isStreaming = false,
                         streamingPreview = null,
                         streamingPartialIndex = 0,
-                        streamingImageIndex = 0,
                         streamingStartedAt = 0L
                     )
                 }

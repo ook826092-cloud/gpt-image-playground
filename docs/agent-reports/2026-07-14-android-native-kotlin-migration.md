@@ -224,3 +224,74 @@ CI 第四轮（commit `488520c`，run `29299187631`）已成功产出 **签名 r
 - **未推送触发的 CI**：当前 CI 仍是上一轮（commit `488520c`）的稳定状态，已发布到 `continuous` Release 的 APK 仍是上一轮产物。
 - 用户允许 push 后，CI 会自动重新编译并更新 `continuous` Release。
 
+---
+
+# 追加 4：Top 4 流式输出（OpenAI `stream=true` + `partial_images`）
+
+| 字段     | 内容                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------- |
+| 日期     | 2026-07-14（追加 4）                                                                              |
+| 状态     | 已完成 (Completed)（代码层面；用户明确要求「现在不要编译」，未 push 触发 CI）                    |
+| 相关请求 | 用户：「现在的作用就是继续对齐你没有移植完成的功能，继续移植谢谢了」（同追加 3 轮）              |
+| 相关文档 | [android/README.md](../../android/README.md)、Web 端 SSE 实现 `src/app/api/images/route.ts`（lines 643-766 / 809-940）、`src-tauri/src/proxy/openai_streaming.rs`、`src-tauri/src/proxy/sse_parser.rs` |
+| 改动范围 | 见下表（Top 4 流式输出）                                                                          |
+| 提交状态 | 未提交（用户明确要求「现在不要编译」；改动已完成本地静态自检，等待用户允许 push 触发 CI）          |
+
+## 范围核对（追加 4）
+
+| 请求目标 | 实际结果 | 证据 | 状态 |
+| -------- | -------- | ---- | ---- |
+| **OpenAI 流式生成 + 编辑** | 仅 OpenAI 兼容上游 `gpt-image-1/1-mini/1.5/2` 支持 `stream: true` + `partial_images: 1-3`；Gemini / Stability / SenseNova / Seedream 均不支持（与 Web 端 `route.ts` line 453-458 / 514-522 的 `400 暂不支持流式预览` 行为对齐）；`OpenAIImageClient.generateStream` / `editStream` 用 `callbackFlow` + `Dispatchers.IO` + `BufferedSource.readUtf8Line()` 手动解析 SSE，事件命名兼容三种格式（标准 `image_generation.partial_image` / 编辑 `image_edit.partial_image` / data-only JSON 带 `type`）；`ImageProviderService.generateStream` / `editStream` 在非 OPENAI provider 时抛 `UnsupportedOperationException` | `data/network/StreamEvent.kt`（新增）、`data/network/OpenAIImageClient.kt`（追加 generateStream/editStream/sseFlow/parseSseBlock/buildStreamBody/buildStreamRequest）、`data/network/ImageProviderService.kt`（追加 generateStream/editStream） | 已完成 (Completed) |
+| **流式 → 持久化 → UI 流转** | `ImageGenerationRepository.generateStream` / `editStream` 把底层 `StreamEvent` 转 `GenerationStreamEvent`（`Partial` / `Completed` / `Failure`）：`Partial` 直接转发 b64_json（ViewModel 解码为 Bitmap 用于实时预览），`Completed` 立即写盘 + 写 Room（每张图完成都会落库，n=4 时会有 4 条历史记录），`Failure` 携带分类好的 `ProviderException`；persistResult 重构出 `persistSingleImage` 给流式路径复用 | `data/repository/GenerationStreamEvent.kt`（新增）、`data/repository/ImageGenerationRepository.kt`（追加 generateStream/editStream/persistSingleImage） | 已完成 (Completed) |
+| **流式 UI** | `WorkbenchUiState` 新增 `streamingEnabled` / `isStreaming` / `streamingPreview: Bitmap?` / `streamingPartialIndex` / `streamingStartedAt`；`WorkbenchViewModel.generate()` 路由：当 `streamingEnabled && model.supportsStreaming && provider == OPENAI` 时调 `generateStream`，否则回退非流式；`cancelGenerate()` 取消 `generateJob: Job?` + 清流式状态；`AdvancedSection` 内当 `model.supportsStreaming` 时显示 `StreamingToggleRow`（`Switch` + i18n 标题/说明）；`GenerateButton` 流式中显示「停止」按钮（错误色），点击调 `cancelGenerate`；`ResultPreview` 流式中显示 partial bitmap + 「预览 N」标签 + 「已耗时 Ns」+ 等待提示 | `ui/screens/workbench/WorkbenchUiState.kt`、`ui/screens/workbench/WorkbenchViewModel.kt`、`ui/screens/workbench/WorkbenchScreen.kt` | 已完成 (Completed) |
+| **取消机制** | 三层取消：① `cancelGenerate()` 调 `generateJob?.cancel()` → ② ViewModel 协程的 `try/catch (CancellationException)` 不做错误处理，finally 清理状态 → ③ `callbackFlow.awaitClose { call.cancel() }` 让 OkHttp 阻塞的 `readUtf8Line()` 抛 IOException 退出 producer 协程。取消后用户已下载的部分图像不会落库（与 Web 端「`controller.enqueue(encoder.encode(errorEvent))` then close」不同，本项目取消后不保留 partial） | `WorkbenchViewModel.kt`、`OpenAIImageClient.sseFlow` | 已完成 (Completed) |
+| **i18n 双语覆盖** | `Strings.kt` 追加 8 字段：`workbenchStreamingTitle` / `workbenchStreamingHint` / `workbenchStreaming` / `workbenchStreamingPreviewTitle` / `workbenchStreamingPartialFormat: (Int) -> String` / `workbenchStreamingWaiting` / `workbenchStreamingElapsed: (Int) -> String` / `workbenchStreamingCanceled`，中英文双语同步 | `ui/i18n/Strings.kt` | 已完成 (Completed) |
+| **静默回退** | 模型不支持流式（如 Gemini Nano Banana 2、Stability SD3.5、SenseNova U1、Seedream 5.0）时，`streamingEnabled` 在 ViewModel `combine` 里被强制为 `false`（避免 UI 显示流式开关但实际回退非流式的不一致体验）；用户切换模型后开关自动跟随 | `WorkbenchViewModel.kt`（`effectiveStreamingEnabled` 计算） | 已完成 (Completed) |
+
+## 问题与解决（追加 4）
+
+| 问题 | 解决办法 | 剩余风险 |
+| ---- | -------- | -------- |
+| `parseSseBlock` 解析 `error` 字段时 `errEl.jsonObject["message"]?.jsonPrimitive?.content ?: errEl.jsonPrimitive?.content`，若 `errEl` 既不是 JsonObject 也不是 JsonPrimitive 会抛 IllegalStateException | 已用 `try { } catch (e: Exception) { "Stream error" }` 包裹，任何类型不匹配都退化为安全 fallback | 无 |
+| OkHttp `Call.execute()` 是同步阻塞调用，消费端取消 Flow 时不会响应 `CancellationException` | 用 `callbackFlow` + `awaitClose { call.cancel() }`：消费端取消 → producerScope 关闭 → `awaitClose` 注册的回调立即执行 `call.cancel()` → 阻塞的 `execute()` / `readUtf8Line()` 抛 IOException 退出 producer 协程 | 无 |
+| `Launch(Dispatchers.IO)` 内部的 IOException 在 `readUtf8Line` 处被静默吞掉（`return@launch` 退出，不发 Error 事件） | 这是预期行为：用户主动取消应该让 Flow 静默结束，不弹错误 toast；只有上游 `call.execute()` 失败、或 SSE 内显式 `error` 事件才会 emit `StreamEvent.Error` | 无 |
+| 编辑流式路径需要先在 IO 加载参考图再发起 `editStream`，但 `ImageGenerationRepository.editStream` 是非 suspend 函数（返回 Flow） | 在 ViewModel 端用 `flow {}` 包装：先 `loadReferenceImages()`（suspend），再 `generationRepository.editStream(request, ...).collect { emit(it) }`，让参考图加载也在流式 collect 协程内执行 | 无 |
+| `streamingImageIndex` 字段原本预留给 n>1 场景显示「图像 N/4」，但 UI 未实际使用 | 已删除该字段（包括 WorkbenchUiState / ViewModel 设置 / ResultPreview 参数），保持 diff 最小 | 未来若需支持 n>1 流式分图显示需重新添加 |
+| `effectiveStreamingEnabled` 原本只检查 `model.supportsStreaming`，用户切到非 OpenAI provider 时开关仍然显示但实际回退非流式 | combine 里追加 `&& providerForModel == ImageProviders.OPENAI` 条件，非 OpenAI 模型强制 `streamingEnabled = false`，UI 自动隐藏开关 | 自定义模型若误标 `supportsStreaming=true` 但 provider 不是 OPENAI，会被静默回退非流式（不会报错） |
+| SSE 流读取时若上游返回非 SSE 格式（如纯 JSON 错误），`source.readUtf8Line()` 会读完整行不切事件，最终 buffer 为空 close | 已用 `try { json.parseToJsonElement } catch { null }` 兜底，解析失败直接返回 null 不 emit | 上游返回非 SSE 时用户看不到具体错误（建议上游保证 `Content-Type: text/event-stream`） |
+
+## 验证（追加 4）
+
+| 检查项 | 命令或场景 | 结果 |
+| ------ | ---------- | ---- |
+| 文件清单 | Read 走查 `StreamEvent.kt` / `GenerationStreamEvent.kt` / `OpenAIImageClient.kt` / `ImageProviderService.kt` / `ImageGenerationRepository.kt` / `WorkbenchUiState.kt` / `WorkbenchViewModel.kt` / `WorkbenchScreen.kt` / `Strings.kt` | 9 个文件改动齐备 |
+| `StreamEvent` sealed class 完整性 | Read `StreamEvent.kt` | 3 个子类：`PartialImage` / `CompletedImage` / `Error`，字段齐全 |
+| `GenerationStreamEvent` sealed interface 完整性 | Read `GenerationStreamEvent.kt` | 3 个子类：`Partial` / `Completed` / `Failure`，字段齐全 |
+| `OpenAIImageClient` 流式方法签名 | Grep `fun generateStream\|fun editStream\|fun sseFlow\|fun parseSseBlock\|fun buildStreamBody\|fun buildStreamRequest` | 6 行匹配，函数齐全 |
+| `ImageProviderService` 流式方法 dispatch | Grep `ImageProviders\.\|throw UnsupportedOperation` | `generateStream` / `editStream` 均有 `ImageProviders.OPENAI ->` 分支 + `else -> throw UnsupportedOperationException` |
+| `ImageModelDefinition.supportsStreaming` 字段 | Grep `supportsStreaming` 在 `Provider.kt` | 12 行匹配：字段定义 + GPT-image-1/1-mini/1.5/2 四个模型 `supportsStreaming = true` |
+| `ImageProviders.OPENAI` 常量 | Grep `const val OPENAI` 在 `Provider.kt` | `"openai"` 已定义 |
+| i18n 字段双语覆盖 | Grep `workbenchStreaming` 在 `Strings.kt` | 8 个新字段中英文双语都齐 |
+| `WorkbenchScreen` 流式 UI 引用对齐 | Grep `strings\.workbenchStreaming\|streamingPreview\|streamingPartialIndex\|streamingStartedAt\|isStreaming\|streamingEnabled` | 28 行匹配，调用与字段定义全部对齐 |
+| `material-icons-extended` 依赖 | Grep `material-icons-extended` 在 `libs.versions.toml` + `app/build.gradle.kts` | toml 第 37 行声明 + build.gradle.kts 第 101 行 `implementation(libs.androidx.material.icons.extended)` 引用；`Icons.Outlined.Bolt` / `Icons.Outlined.Stop` 在 extended 包内 |
+| `callbackFlow` + `awaitClose` 取消机制 | Read `OpenAIImageClient.sseFlow` | producer 协程在 `Dispatchers.IO` 启动；`awaitClose { call.cancel() }` 注册取消回调 |
+| `WorkbenchViewModel.cancelGenerate` 状态清理 | Read `cancelGenerate` | 取消 Job + 清空 isGenerating/isStreaming/streamingPreview/streamingPartialIndex/streamingStartedAt |
+| `kotlinx.coroutines.flow.map` 未使用 import | Grep `flow\.map` 在 `ImageGenerationRepository.kt` | 已删除（只用了 List.map） |
+| `kotlinx.coroutines.json.boolean` 未使用 import | Grep `\.boolean` 在 `OpenAIImageClient.kt` | 已删除 |
+| `./gradlew assembleRelease` | **未执行**（用户明确要求「现在不要编译」，不 push 触发 CI） | 等待用户允许后 push 触发 CI 验证 |
+| 真机流式生成 / 取消 / Gemini 自动回退 | **未执行**（无设备） | 等待用户在 Android Studio 真机或 CI 上验证 |
+
+## 后续建议（追加 4）
+
+- **真机/模拟器回归**：
+  - OpenAI gpt-image-2 流式生成：观察 partial bitmap 渐进式渲染（partial_images=2 → 2 张预览 + 1 张完成）
+  - OpenAI gpt-image-2 流式编辑（带 1 张参考图）：观察 editStream 路径正常返回
+  - 取消按钮：取消后 Job 立即结束、状态清零、不弹错误 toast
+  - 切换模型到 Gemini Nano Banana 2：`StreamingToggleRow` 自动隐藏，回退非流式
+  - 切换模型到 Stability SD3.5：同上
+  - 流式过程中切换 n=2/3/4：观察每张图完成都会更新 lastResult 并落库（n=4 → 4 条历史记录）
+- **Top 5 蒙版编辑 / inpaint**：下一步可调研 mask 来源（手画 canvas 还是上传图片）+ WorkbenchScreen 是否需要新增 `MaskUploadSection`；当前 `EditRequest.mask` 字段已存在但 UI 未暴露入口
+- **流式取消后的部分图像**：当前实现是「取消即丢弃 partial bitmap」，与 Web 端「取消时仍保留 latestPartialImage 写盘」行为不同；若用户希望取消也保留预览，可在 `WorkbenchViewModel.cancelGenerate` 里把 `streamingPreview` 也落库（但与「用户主动取消」语义有冲突，建议先观察用户反馈）
+- **流式错误 toast**：当前 `GenerationStreamEvent.Failure` 会设置 `error` 字段，UI 会显示 ErrorBanner；但流式过程中可能已收到 partial bitmap，UI 上 partial bitmap 与 ErrorBanner 同时显示，体验略奇怪；后续可考虑流式失败时清掉 partial bitmap
+- **n>1 流式分图 UI**：当前 UI 只显示最后一张图的 partial bitmap；n>1 时用户看不到前面几张图的预览；若需要可改为 LazyColumn 显示每张图的 partial 状态
+

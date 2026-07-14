@@ -33,8 +33,6 @@ data class WorkbenchUiState(
     val streamingPreview: Bitmap? = null,
     /** 当前预览对应的部分图像索引（1/2/3）。 */
     val streamingPartialIndex: Int = 0,
-    /** 当前流式生成对应的图像序号（n=4 时可能为 0..3）。 */
-    val streamingImageIndex: Int = 0,
     /** 流式生成开始时间戳，用于显示「已耗时 N 秒」。 */
     val streamingStartedAt: Long = 0L
 )
