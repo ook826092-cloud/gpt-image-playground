@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <files-path name="generated_images" path="generated/" />
+    <files-path name="reference_images" path="references/" />
+    <files-path name="cache" path="." />
+    <external-files-path name="external_generated" path="generated/" />
+    <external-files-path name="external_cache" path="cache/" />
+</paths>

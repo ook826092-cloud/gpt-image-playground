@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GPT 图像工作台</string>
+    <string name="app_name_en">GPT Image Playground</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_workbench">工作台</string>
+    <string name="nav_album">相册</string>
+    <string name="nav_settings">设置</string>
+
+    <!-- Common -->
+    <string name="common_cancel">取消</string>
+    <string name="common_confirm">确认</string>
+    <string name="common_save">保存</string>
+    <string name="common_delete">删除</string>
+    <string name="common_close">关闭</string>
+    <string name="common_retry">重试</string>
+    <string name="common_share">分享</string>
+    <string name="common_download">下载</string>
+    <string name="common_edit">编辑</string>
+    <string name="common_copy">复制</string>
+    <string name="common_copied">已复制</string>
+    <string name="common_loading">加载中…</string>
+    <string name="common_error">出错了</string>
+    <string name="common_back">返回</string>
+    <string name="common_done">完成</string>
+    <string name="common_empty">暂无内容</string>
+
+    <!-- Workbench -->
+    <string name="workbench_prompt_placeholder">描述你想要生成的图像，例如：一只在窗台上的橘猫，水彩风格，柔和光线…</string>
+    <string name="workbench_generate">生成</string>
+    <string name="workbench_stop">停止</string>
+    <string name="workbench_advanced">高级</string>
+    <string name="workbench_model">模型</string>
+    <string name="workbench_size">尺寸</string>
+    <string name="workbench_quality">质量</string>
+    <string name="workbench_format">格式</string>
+    <string name="workbench_count">数量</string>
+    <string name="workbench_reference_images">参考图</string>
+    <string name="workbench_add_reference">添加参考图</string>
+    <string name="workbench_clear_references">清空参考图</string>
+    <string name="workbench_send_to_edit">发送到编辑</string>
+    <string name="workbench_use_as_reference">用作参考图</string>
+    <string name="workbench_result">生成结果</string>
+    <string name="workbench_no_result">尚未生成任何图像</string>
+    <string name="workbench_generating">正在生成…</string>
+    <string name="workbench_generate_failed">生成失败</string>
+    <string name="workbench_save_to_album">保存到相册</string>
+    <string name="workbench_saved">已保存到相册</string>
+    <string name="workbench_save_failed">保存失败</string>
+    <string name="workbench_prompt_empty">请输入提示词</string>
+    <string name="workbench_provider_not_configured">未配置任何供应商，请先在设置中填入 API Key</string>
+    <string name="workbench_open_settings">打开设置</string>
+
+    <!-- Album -->
+    <string name="album_images">图片</string>
+    <string name="album_videos">视频</string>
+    <string name="album_no_images">暂无图片，去工作台生成第一张吧</string>
+    <string name="album_no_videos">暂无视频</string>
+    <string name="album_delete">删除</string>
+    <string name="album_share">分享</string>
+    <string name="album_send_to_edit">发送到编辑</string>
+    <string name="album_delete_confirm">确定要删除这张图片吗？</string>
+    <string name="album_deleted">已删除</string>
+    <string name="album_count_format">%1$d 张</string>
+
+    <!-- Settings -->
+    <string name="settings_providers">供应商与模型</string>
+    <string name="settings_appearance">外观</string>
+    <string name="settings_language">语言</string>
+    <string name="settings_about">关于</string>
+    <string name="settings_theme">主题</string>
+    <string name="settings_theme_light">浅色</string>
+    <string name="settings_theme_dark">深色</string>
+    <string name="settings_theme_system">跟随系统</string>
+    <string name="settings_api_key">API Key</string>
+    <string name="settings_api_base_url">Base URL</string>
+    <string name="settings_api_base_url_hint">可选，留空使用默认地址</string>
+    <string name="settings_provider_openai">OpenAI 兼容</string>
+    <string name="settings_provider_google">Google Gemini</string>
+    <string name="settings_provider_sensenova">SenseNova</string>
+    <string name="settings_provider_seedream">Seedream 豆包</string>
+    <string name="settings_save">保存</string>
+    <string name="settings_saved">设置已保存</string>
+    <string name="settings_show_api_key">显示 API Key</string>
+    <string name="settings_hide_api_key">隐藏 API Key</string>
+    <string name="settings_clear_api_key">清空 API Key</string>
+    <string name="settings_about_description">GPT 图像工作台 安卓原生版，使用 Jetpack Compose 构建。\n直接连接到 OpenAI 兼容、Google Gemini、SenseNova、Seedream 等图像生成服务商。</string>
+    <string name="settings_about_version">版本 %1$s</string>
+    <string name="settings_about_repo">项目仓库</string>
+    <string name="settings_about_open_source">开源协议 MIT</string>
+    <string name="settings_default_model">默认模型</string>
+    <string name="settings_no_provider_configured">尚未配置任何供应商</string>
+    <string name="settings_test_connection">测试连接</string>
+    <string name="settings_test_connection_success">连接成功</string>
+    <string name="settings_test_connection_failed">连接失败：%1$s</string>
+
+    <!-- Errors -->
+    <string name="error_network">网络异常，请检查网络后重试</string>
+    <string name="error_unknown">未知错误</string>
+    <string name="error_invalid_api_key">API Key 无效或未配置</string>
+    <string name="error_save_failed">保存失败</string>
+</resources>
