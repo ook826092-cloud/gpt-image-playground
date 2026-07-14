@@ -36,11 +36,25 @@
 | 供应商 | 端点 | 模型 |
 | --- | --- | --- |
 | OpenAI 兼容 | `/v1/images/generations`、`/v1/images/edits` | gpt-image-2 / 1.5 / 1 / 1-mini |
-| Google Gemini | `/v1beta/models/<id>:generateContent?key=...` | gemini-3.1-flash-image-preview (Nano Banana 2) |
+| Google Gemini | `/v1beta/models/<id>:generateContent?key=...` | Nano Banana 2（gemini-3.1-flash-image-preview）/ Nano Banana Pro（gemini-3-pro-image-preview）/ Nano Banana 2 Lite（gemini-3.1-flash-lite-image） |
 | SenseNova | OpenAI 兼容 | sensenova-u1-fast |
 | Seedream 豆包 | OpenAI 兼容 + JSON 编辑模式（`image` 字段为 data URI 数组） | doubao-seedream 5.0 / 5.0-lite / 4.5 / 4.0 / 3.0-t2i |
+| Stability AI | `/v2beta/stable-image/generate/sd3`（multipart，仅文生图） | Stable Diffusion 3.5 Large / 3.5 Large Turbo |
 
-供应商路由在 [ImageProviderService.kt](app/src/main/java/com/gptimage/playground/data/network/ImageProviderService.kt) 中按 `model.provider` 分发到 `OpenAIImageClient` 或 `GeminiImageClient`。
+供应商路由在 [ImageProviderService.kt](app/src/main/java/com/gptimage/playground/data/network/ImageProviderService.kt) 中按 `model.provider` 分发到 `OpenAIImageClient`、`GeminiImageClient` 或 `StabilityImageClient`。
+
+> 2026 市场调研：`fal.ai`、`Replicate`、`OpenRouter`、`Ideogram` 等聚合器/直连供应商暂未内置客户端。其中 OpenRouter 已提供 OpenAI 兼容的 `/v1/images/generations`，可直接通过「OpenAI 兼容」供应商填入其 Base URL 使用，无需额外客户端。
+
+## 持续集成（GitHub Actions）
+
+仓库内置 [`.github/workflows/android-build.yml`](../.github/workflows/android-build.yml)：当 `android/` 目录或该工作流文件有变更推送到 `master`、或推送 `v*` 标签、或手动触发时，会在 GitHub 上编译并产出 APK 构建产物（artifact）。
+
+- 触发：push 到 master / `v*` tag / `workflow_dispatch`
+- 环境：ubuntu-latest + JDK 17 + Android SDK 35
+- 产物：`gpt-image-playground-debug-apk`（debug APK，主产物）+ `gpt-image-playground-release-apk-unsigned`（unsigned release APK，best-effort）
+- 下载：在仓库的 **Actions** 标签页找到对应 run → 下拉到 Artifacts 区域下载 APK zip
+
+仓库原有的 `build-release.yml`（Tauri 桌面端 + Tauri 安卓打包）保留不动，仅作为参考，与本原生工程互不影响。
 
 ## 目录结构
 
