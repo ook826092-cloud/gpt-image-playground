@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBars
@@ -36,9 +38,27 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.Brush
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Error
+import androidx.compose.material.icons.outlined.Save
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material.icons.outlined.Undo
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -295,20 +315,20 @@ private fun WorkbenchTopBar(
         if (canClear) {
             IconButton(onClick = onClearAll) {
                 Icon(
-                    androidx.compose.material.icons.Icons.Outlined.DeleteOutline,
+                    Icons.Outlined.Delete,
                     contentDescription = strings.chatClearAll
                 )
             }
         }
         IconButton(onClick = onOpenTemplates) {
             Icon(
-                androidx.compose.material.icons.automirrored.filled.List,
+                Icons.AutoMirrored.Filled.List,
                 contentDescription = strings.templatesOpen
             )
         }
         IconButton(onClick = onOpenSettings) {
             Icon(
-                androidx.compose.material.icons.Icons.Outlined.Settings,
+                Icons.Outlined.Settings,
                 contentDescription = strings.settingsProviders
             )
         }
@@ -339,7 +359,7 @@ private fun EmptyChatState(modifier: Modifier = Modifier) {
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                androidx.compose.material.icons.Icons.Rounded.AutoAwesome,
+                Icons.Rounded.AutoAwesome,
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(40.dp)
@@ -650,7 +670,7 @@ private fun AssistantErrorContent(turn: ChatTurn, onRetry: () -> Unit) {
     val strings = LocalStrings.current
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(
-            androidx.compose.material.icons.Icons.Outlined.ErrorOutline,
+            Icons.Outlined.Error,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.error,
             modifier = Modifier.size(18.dp)
@@ -828,7 +848,10 @@ private fun InputBar(
                     modifier = Modifier
                         .size(48.dp)
                         .clip(CircleShape)
-                        .background(if (sendEnabled) gradient else cs.surfaceVariant.copy(alpha = 0.4f))
+                        .then(
+                            if (sendEnabled) Modifier.background(gradient, CircleShape)
+                            else Modifier.background(cs.surfaceVariant.copy(alpha = 0.4f), CircleShape)
+                        )
                         .clickable(
                             interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                             indication = ripple(bounded = true)
@@ -839,13 +862,13 @@ private fun InputBar(
                 ) {
                     if (isGenerating) {
                         Icon(
-                            androidx.compose.material.icons.Icons.Outlined.Stop,
+                            Icons.Outlined.Stop,
                             contentDescription = strings.workbenchStop,
                             tint = Color.White
                         )
                     } else {
                         Icon(
-                            androidx.compose.material.icons.Icons.Rounded.ArrowUpward,
+                            Icons.Rounded.ArrowUpward,
                             contentDescription = strings.chatSend,
                             tint = if (sendEnabled) Color.White else cs.onSurfaceVariant
                         )
@@ -881,7 +904,7 @@ private fun ReferenceThumbnail(uri: android.net.Uri, onRemove: () -> Unit) {
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                androidx.compose.material.icons.Icons.Outlined.Close,
+                Icons.Outlined.Close,
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(12.dp)
@@ -906,7 +929,7 @@ private fun AddReferencePill(onClick: () -> Unit) {
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            androidx.compose.material.icons.Icons.Outlined.AddPhotoAlternate,
+            Icons.Outlined.AddPhotoAlternate,
             contentDescription = null,
             tint = cs.primary
         )
@@ -1023,7 +1046,7 @@ private fun ModelRow(label: String, selected: Boolean, onClick: () -> Unit) {
         )
         if (selected) {
             Icon(
-                androidx.compose.material.icons.Icons.Outlined.Check,
+                Icons.Outlined.Check,
                 contentDescription = null,
                 tint = cs.primary,
                 modifier = Modifier.size(18.dp)
@@ -1040,7 +1063,7 @@ private fun StreamingToggleRow(enabled: Boolean, onToggle: (Boolean) -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            androidx.compose.material.icons.Icons.Outlined.Bolt,
+            Icons.Outlined.Bolt,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary
         )
@@ -1163,7 +1186,7 @@ private fun MaskEditorSheet(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    androidx.compose.material.icons.Icons.Outlined.Brush,
+                    Icons.Outlined.Brush,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary
                 )
@@ -1176,7 +1199,7 @@ private fun MaskEditorSheet(
                 if (state.maskSaved) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            androidx.compose.material.icons.Icons.Outlined.Check,
+                            Icons.Outlined.Check,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(16.dp)
@@ -1191,7 +1214,7 @@ private fun MaskEditorSheet(
                 }
                 IconButton(onClick = onDismiss) {
                     Icon(
-                        androidx.compose.material.icons.Icons.Outlined.Close,
+                        Icons.Outlined.Close,
                         contentDescription = strings.commonClose
                     )
                 }
@@ -1251,7 +1274,7 @@ private fun MaskEditorSheet(
                         onClick = onUndoLastPoint,
                         style = AppButtonStyle.Secondary,
                         enabled = state.maskDrawnPoints.isNotEmpty(),
-                        leadingIcon = androidx.compose.material.icons.Icons.Outlined.Undo,
+                        leadingIcon = Icons.Outlined.Undo,
                         modifier = Modifier.weight(1f)
                     )
                     AppButton(
@@ -1259,14 +1282,14 @@ private fun MaskEditorSheet(
                         onClick = onClearMask,
                         style = AppButtonStyle.Secondary,
                         enabled = state.maskDrawnPoints.isNotEmpty(),
-                        leadingIcon = androidx.compose.material.icons.Icons.Outlined.DeleteOutline,
+                        leadingIcon = Icons.Outlined.Delete,
                         modifier = Modifier.weight(1f)
                     )
                     AppButton(
                         text = strings.workbenchMaskSave,
                         onClick = onSaveMask,
                         enabled = state.maskDrawnPoints.isNotEmpty() && !state.maskSaved,
-                        leadingIcon = androidx.compose.material.icons.Icons.Outlined.Save,
+                        leadingIcon = Icons.Outlined.Save,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -1319,6 +1342,8 @@ private fun MaskCanvas(
 
         var lastSrc: Offset? by remember { mutableStateOf(null) }
 
+        val previewColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
@@ -1347,7 +1372,6 @@ private fun MaskCanvas(
                     )
                 }
         ) {
-            val previewColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
             drawnPoints.forEach { p ->
                 val cx = p.x / srcWidth * size.width
                 val cy = p.y / srcHeight * size.height
@@ -1374,13 +1398,6 @@ private fun bubbleShape(alignedRight: Boolean): androidx.compose.ui.graphics.Sha
         bottomStart = 18f
     )
 }
-
-@Composable
-private fun rememberScrollState() = androidx.compose.foundation.rememberScrollState()
-
-@Composable
-private fun androidx.compose.foundation.layout.RowScope.horizontalScroll(state: androidx.compose.foundation.ScrollState) =
-    Modifier.then(androidx.compose.foundation.horizontalScroll(state))
 
 // =====================================================================
 // Share
