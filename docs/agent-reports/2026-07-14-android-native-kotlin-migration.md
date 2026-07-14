@@ -460,3 +460,67 @@ CI 第三轮（commit `56ad6e1`，run `29306165532`）已成功产出 **签名 r
 - **Top 4 真机回归**：见「后续建议（追加 4）」的流式输出场景清单
 - **Kotlin compile daemon flakiness**：偶发 `daemon terminated unexpectedly`，但 Kotlin 自动 fallback 到非 daemon 模式继续编译，不影响最终结果；若频繁出现可在 `gradle.properties` 加 `kotlin.compiler.execution.strategy=in-process` 强制非 daemon
 
+## 范围核对（追加 7：UI 全量重构 — iOS 风格 + 聊天式工作台）
+
+| 字段     | 内容                                                                                                          |
+| -------- | ----------------------------------------------------------------------------------------------------------- |
+| 日期     | 2026-07-14                                                                                                  |
+| 状态     | 已完成 (Completed) — 本地提交，未推送（等待用户确认）                                                          |
+| 相关请求 | 用户：「OK，你赶紧把 UI 给我重构一下，这 UI 真的好丑啊，一股原生安卓的味道」；设计方向（AskUserQuestion 回答）：iOS 风格 + 聊天式工作台 + 浅色优先 + 保留青蓝橙 + 全量重构 |
+| 改动范围 | 14 个文件，+3155 / -1350 行；新增 3 文件（Components.kt / Dimens.kt / Shapes.kt），重写 8 文件（Color/Theme/Type + AppRoot + WorkbenchScreen/UiState/ViewModel + Strings），重写 3 屏（Album/Settings/ImageDetailSheet）|
+| 提交状态 | 本地 commit `3539110` on `trae/agent-8VmK5f`；未 push，等用户确认后再推送触发 CI                               |
+
+| 请求目标 | 实际结果 | 证据 | 状态 |
+| -------- | -------- | ---- | ---- |
+| 摆脱原生安卓 Material 默认外观 | 重写 `Color.kt`：浅色用 iOS 系统色（error #FF3B30 / background #F2F4F8 / surface #FFFFFF / label #1C1C1E / outline #D1D5DC）；深色用 iOS 深色（#000/#1C1C1E/#48484A） | `ui/theme/Color.kt` | 已完成 (Completed) |
+| iOS 风字体层级 | `Type.kt` 重写：displayLarge=32sp Bold / headlineMedium=20sp SemiBold / titleMedium=16sp SemiBold / bodyLarge=16sp Normal / labelLarge=15sp SemiBold 等；新增 `AppTextStyles`（largeTitle/navTitle/caption） | `ui/theme/Type.kt` | 已完成 (Completed) |
+| iOS 风圆角 + 间距统一 | 新建 `Shapes.kt`（10/14/20/28 + pill + small/large/sheet/dialog/bubble）；新建 `Dimens.kt`（Spacing/ContentPadding/AppHeight/AppRadius/AppElevation token） | `ui/theme/Shapes.kt`、`ui/theme/Dimens.kt` | 已完成 (Completed) |
+| 修复 edge-to-edge bug | `Theme.kt` 改为 `WindowCompat.setDecorFitsSystemWindows(window, false)`；状态栏/导航栏透明 | `ui/theme/Theme.kt` | 已完成 (Completed) |
+| 暴露 M3 之外的额外颜色（品牌渐变、聊天气泡色等） | 新增 `AppExtraColors` data class + `LocalAppExtraColors` CompositionLocal + `AppExtra.current` 快捷访问；`MaterialTheme` 传入 `shapes = AppShapes` | `ui/theme/Theme.kt` | 已完成 (Completed) |
+| 复用组件库（避免每屏重复写） | 新建 `Components.kt`：`AppCard`（白底圆角 + 极浅阴影 + 0.5dp outline）、`AppButton`（Primary 渐变 / Secondary / Text / Tonal 四种）、`AppIconButton`、`AppTextField`、`AppChip`、`AppSectionHeader`、`AppListRow`；全部使用 M3 原生 `ripple()` | `ui/components/Components.kt` | 已完成 (Completed) |
+| 浮动底部导航（取代 Scaffold + NavigationBar） | `AppRoot` 重写为 `Box + NavHost + FloatingTabBar`（圆角 28dp + 半透明 surface + 12dp 阴影 + 0.5dp outline）；`TabItem` 选中时 primary 色 + 自动用 selectedIcon | `ui/navigation/AppRoot.kt` | 已完成 (Completed) |
+| 工作台改为聊天式（像主流 AI chat） | `WorkbenchScreen` 完全重写：`LazyColumn + items(turns)` 聊天列表；`UserBubble`（右对齐 + 品牌渐变）；`AssistantBubble` 四态（GENERATING/SUCCESS/ERROR/CANCELED）；空状态用品牌渐变图标；底部输入栏（chips + 参考图缩略图 + 圆形发送按钮）；高级参数 ModalBottomSheet；蒙版编辑器 ModalBottomSheet；清空对话确认 AlertDialog | `ui/screens/workbench/WorkbenchScreen.kt` | 已完成 (Completed) |
+| ChatTurn 数据模型 | `WorkbenchUiState` 新增 `ChatTurn` data class + `TurnStatus` 枚举 + `turns: List<ChatTurn>` 字段；equals/hashCode 同步更新 | `ui/screens/workbench/WorkbenchUiState.kt` | 已完成 (Completed) |
+| ViewModel turn 生命周期 | `WorkbenchViewModel` 新增 `retryTurn`/`clearTurns`/`updateLastTurn`；`generate`/`cancelGenerate`/`startNonStreamingGenerate`/`startStreamingGenerate` 同步 turn 状态（partial/completed/failure/finally 全覆盖） | `ui/screens/workbench/WorkbenchViewModel.kt` | 已完成 (Completed) |
+| 聊天式 i18n 文案 | `Strings.kt` 新增 23 个字段：chatEmptyTitle/Subtitle、chatInputPlaceholder、chatSend、chatGenerating、chatStreaming、chatTurnError/Canceled/Retry/SaveToAlbum/Saved/UseAsReference/SendToEdit/Share、chatReferencesChip(Int) 等；中英文双语同步 | `ui/i18n/Strings.kt` | 已完成 (Completed) |
+| 相册应用新主题 | `AlbumScreen` 重写：TopAppBar 改为自定义顶栏（statusBars inset + 头像数量副标题）；`TabRow` 改为 iOS Segmented Control（浅灰容器 + 白色滑块）；图片格子用 `shadow + clip + AppCorner.card`；空状态用品牌渐变图标；底部留 72dp 给浮动 tab bar | `ui/screens/album/AlbumScreen.kt` | 已完成 (Completed) |
+| 详情 Sheet 应用新主题 | `ImageDetailSheet` 重写：所有卡片改用 `DetailCard`（白底 + 0.5dp outline + 极浅阴影）；操作行加圆形 icon 背景（primary 容器 / error 容器）；底部 sheet 用 `AppCorner.sheet` 圆角；metadata 行间距统一 | `ui/screens/album/ImageDetailSheet.kt` | 已完成 (Completed) |
+| 设置应用新主题 | `SettingsScreen` 完全重写：LazyColumn 替代滚动 Column；section 用 `CardContainer` 白底圆角；`ProviderRow` 折叠式（点击展开表单）；模型选择用 `FilterPill` 胶囊 chip；主题/语言用 `FlowRow + FilterPill`；按钮用 `PrimaryPillButton`（品牌渐变胶囊）/ `TonalPillButton`（浅色胶囊）；`AlertDialog` 用 `AppCorner.dialog`；SnackbarHost 上浮避开浮动 tab bar | `ui/screens/settings/SettingsScreen.kt` | 已完成 (Completed) |
+| 保留品牌青蓝+橙 | `Color.kt` 保留 `BrandPrimary=#4A90E2`、`BrandSecondary=#24C8DB`、`BrandAccent=#FF8A4C`；按钮渐变用 `extra.gradientStart`（青）→ `gradientEnd`（蓝） | `ui/theme/Color.kt`、`ui/theme/Theme.kt` | 已完成 (Completed) |
+| 浅色优先 | Light scheme 默认；LightExtraColors 显式配置（systemBubble=#E9ECF1、groupedBackground=#F2F4F8、groupedCell=#FFFFFF） | `ui/theme/Theme.kt` | 已完成 (Completed) |
+
+## 问题与解决（追加 7）
+
+| 问题 | 解决办法 | 剩余风险 |
+| ---- | -------- | -------- |
+| 第一版 Components.kt 使用已废弃的 `androidx.compose.material.ripple.rememberRipple` | 改为 M3 原生 `androidx.compose.material3.ripple` API | 无 |
+| AppRoot 第一版自定义了 `LocalContext()` composable 别名（多余）、`currentDestinationHasRoute` 辅助返回 false（无意义）、缺 `RowScope` import | 完全重写 AppRoot，直接 `import LocalContext`、恢复 `hierarchy` 检查、添加 `RowScope` import | 无 |
+| `Strings.kt` 中 `chatMaskUnsavedHint: String,` 漏 `val` 前缀 | 改为 `val chatMaskUnsavedHint: String,` | 无 |
+| `MainActivity.kt` 调 `enableEdgeToEdge()` 但 `Theme.kt` 的 `setDecorFitsSystemWindows(window, true)` 又关掉了 | `Theme.kt` 改为 `setDecorFitsSystemWindows(window, false)` | 无 |
+| 三屏（Album/Settings/ImageDetailSheet）静态自检发现 `RoundedCornerShape`、`AppElevation` 等未使用 import | 删除未使用 import；album 改用本地 `TopBarIconButton`（带 contentDescription）替代 components 的 AppIconButton | 无 |
+| 沙箱无外网，无法下载 AGP 插件运行 `gradle compileDebugKotlin` | 改为静态自检：搜索导入与使用对齐、引用未解析、M3 API 签名匹配；通过 search 子代理跑全文检查，三屏均 OK | 未做实机编译验证（需 push 后 CI 验证）|
+
+## 验证（追加 7）
+
+| 项 | 状态 | 说明 |
+| -- | ---- | ---- |
+| 静态自检（三屏导入/类型/M3 API） | ✅ | search 子代理全文核对，三屏 OK；`material-icons-extended` 在 classpath；Compose BOM 2024.10.01 支持 `FlowRow` 稳定版（无需 OptIn）|
+| edge-to-edge 联动 | ✅ | `MainActivity.enableEdgeToEdge()` + `Theme.kt setDecorFitsSystemWindows(false)` + 状态栏透明 + `isAppearanceLightStatusBars` 跟随 useDark |
+| 浅色/深色双主题 | ⚠ 待真机回归 | LightExtraColors / DarkExtraColors 都已配置；未在真机/模拟器验证视觉差异 |
+| 移动端布局适配 | ⚠ 待真机回归 | 三屏都加了 `statusBarsPadding`/`navigationBarsPadding`/浮动 tab bar 占位；未在真机验证 |
+| 实机编译 | ❌ 跳过 | 沙箱无外网下载 AGP，无法运行 `./gradlew :app:compileDebugKotlin`；建议 push 后由 CI 验证 |
+| 浏览器/模拟器截图 | ❌ 跳过 | 非 web 项目，无 dev server 可开 |
+
+## 后续建议（追加 7）
+
+1. **用户确认后 push 触发 CI**：CI 会自动编译并产出独立 Release 页面（独立 tag per run），用户可下载 APK 真机回归
+2. **真机回归重点**：
+   - 浅色/深色切换是否一致（设置 → 主题）
+   - 聊天式工作台流式生成时助手气泡内的 partial 预览是否能更新
+   - 蒙版编辑器在新主题下的画布是否可用
+   - 相册图片格子圆角 + 阴影是否正确
+   - 浮动 tab bar 不遮挡列表最后一行（已加 72dp 占位）
+   - 设置页 Provider 折叠展开表单是否流畅
+3. **可选优化**：搜索 SettingsScreen 中 `Modifier.menuAnchor()`（无参版在 M3 1.3.x 已废弃，仅警告），后续可换为 `menuAnchor(MenuAnchorType.PrimaryNotEditable)`；不影响编译
+4. **未推送的本地 commit**：`3539110 refactor(android-ui): rewrite all screens to iOS-style theme` on `trae/agent-8VmK5f`，等用户确认后 `git push origin trae/agent-8VmK5f` 触发 CI
+
