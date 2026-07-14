@@ -57,16 +57,18 @@
 
 ### Release 页面规则
 
+每次成功编译都会创建一个**独立的新 Release 页面**（不再覆盖共享的 `continuous` 滚动 release），便于追溯每个版本。
+
 | 触发方式 | Release 行为 |
 | --- | --- |
-| push 到 master / main | 更新滚动 pre-release `continuous`（同名 tag，每次覆盖 APK） |
+| push 到 master / main | 创建独立 pre-release，tag = `master-<short-sha>-<run_id>`，标题 `Master Build <short-sha> (run #<run_number>)` |
 | push `v*` tag（如 `v1.0.1`） | 创建正式 Release `v1.0.1`，自动生成 release notes |
-| `workflow_dispatch` 手动触发 | 同 master，更新 `continuous` |
+| `workflow_dispatch` 手动触发 | 创建独立 pre-release，tag = `manual-<short-sha>-<run_id>`，标题 `Manual Build <short-sha> (run #<run_number>)` |
 | Pull Request | 只产出 artifact，不创建 Release |
 
 下载地址：
-- 滚动版（最新 master）：`https://github.com/ook826092-cloud/gpt-image-playground/releases/tag/continuous`
-- 历史正式版：`https://github.com/ook826092-cloud/gpt-image-playground/releases`
+- 全部历史 Release：`https://github.com/ook826092-cloud/gpt-image-playground/releases`
+- 历史遗留的 `continuous` 滚动 release（已停止更新，保留为历史归档）：`https://github.com/ook826092-cloud/gpt-image-playground/releases/tag/continuous`
 
 仓库原有的 `build-release.yml`（Tauri 桌面端 + Tauri 安卓打包）保留不动，仅作为参考，与本原生工程互不影响。
 

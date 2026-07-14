@@ -157,22 +157,43 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Create or update rolling GitHub Release (push to master/main)
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
+      - name: Compute release metadata (unique tag per run)
+        id: relmeta
+        shell: bash
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          run_id="${{ github.run_id }}"
+          run_number="${{ github.run_number }}"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "tag=manual-${short_sha}-${run_id}" >> "$GITHUB_OUTPUT"
+            echo "title=Manual Build ${short_sha} (run #${run_number})" >> "$GITHUB_OUTPUT"
+            echo "trigger=manual workflow_dispatch" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=master-${short_sha}-${run_id}" >> "$GITHUB_OUTPUT"
+            echo "title=Master Build ${short_sha} (run #${run_number})" >> "$GITHUB_OUTPUT"
+            echo "trigger=push to ${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Create new GitHub Release (push to master/main or workflow_dispatch)
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: continuous
-          name: Continuous Build
+          tag_name: ${{ steps.relmeta.outputs.tag }}
+          name: ${{ steps.relmeta.outputs.title }}
           body: |
-            Auto-built **signed** release APK from `${{ github.sha }}`.
+            Auto-built **signed** release APK — each CI run publishes its own independent Release page (no longer overwrites a shared `continuous` rolling release).
 
-            - Built at run: ${{ github.run_id }}
-            - Commit: ${{ github.sha }}
-            - This is a rolling pre-release. The APK here is overwritten on every successful master build.
+            - Commit: `${{ github.sha }}` (`${{ steps.relmeta.outputs.short_sha }}`)
+            - Triggered by: ${{ steps.relmeta.outputs.trigger }}
+            - Run: ${{ github.run_id }} (run number #${{ github.run_number }})
+            - Branch/Ref: `${{ github.ref_name }}`
+            - Built at: ${{ github.run_started_at }}
 
-            The APK is signed with an auto-generated CI keystore (RSA 2048, 100-year validity), so it is directly installable. Because the keystore is cached, the signing fingerprint stays stable across builds — you can install an upgrade over the previous version without uninstalling.
+            **Signing**: The APK is signed with the keystore configured via GitHub Secrets (`RELEASE_KEYSTORE_BASE64` + `KEYSTORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD`). When secrets are not yet uploaded, CI falls back to an auto-generated keystore (signature will be present but the fingerprint may change if cache is evicted). Upload the 4 secrets once to make the signature permanently stable across every run.
 
-            **For permanent signing stability**, upload `RELEASE_KEYSTORE_BASE64` / `KEYSTORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD` to GitHub Secrets. After upload, CI will use the same keystore on every run (no longer dependent on cache survival).
+            To install over a previous build that used a different signing key, uninstall the old app first.
           prerelease: true
           files: android/app/build/outputs/apk/release/*.apk
           make_latest: 'false'
@@ -185,19 +206,5 @@ jobs:
         with:
           files: android/app/build/outputs/apk/release/*.apk
           generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create rolling GitHub Release (workflow_dispatch)
-        if: github.event_name == 'workflow_dispatch'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: continuous
-          name: Continuous Build
-          body: |
-            Auto-built **signed** release APK from manual workflow_dispatch (commit `${{ github.sha }}`, run ${{ github.run_id }}).
-          prerelease: true
-          files: android/app/build/outputs/apk/release/*.apk
-          make_latest: 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
