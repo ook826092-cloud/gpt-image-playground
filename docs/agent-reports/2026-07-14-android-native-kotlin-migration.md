@@ -2,11 +2,11 @@
 
 | 字段     | 内容                                                                                              |
 | -------- | ------------------------------------------------------------------------------------------------- |
-| 日期     | 2026-07-14（迁移）/ 2026-07-14（追加：供应商扩展 + GitHub Actions APK CI + 编译修复三轮）           |
-| 状态     | 已完成 (Completed)（CI 第三轮成功产出 debug + unsigned release APK，见「CI APK 产物获取」）         |
-| 相关请求 | 用户：「将这个项目由网页套壳变成安卓原生项目…尽量使用 Kotlin…只需要安卓版本…删除其他版本冗余代码…推送到 GitHub」；后续追加：「查网上有哪些可以添加的供应商/端口…落后的尽量赶上…保留代码只在 GitHub 留作参考…用 GitHub 编译成安卓 APK」 |
+| 日期     | 2026-07-14（迁移）/ 2026-07-14（追加 1：供应商扩展 + APK CI）/ 2026-07-14（追加 2：CI 自动签名 + 自动发 Release）|
+| 状态     | 已完成 (Completed)（CI 产出签名 release APK 并自动发布到 GitHub Release `continuous`）            |
+| 相关请求 | 用户：「将这个项目由网页套壳变成安卓原生项目…尽量使用 Kotlin…只需要安卓版本…删除其他版本冗余代码…推送到 GitHub」；追加 1：「查网上有哪些可以添加的供应商/端口…落后的尽量赶上…保留代码只在 GitHub 留作参考…用 GitHub 编译成安卓 APK」；追加 2：「让它自动发布 release 页面吗？每次编译的时候…自动签名…不要 debug，直接 release」 |
 | 相关文档 | [android/README.md](../../android/README.md)、[docs/android-apk.md](../android-apk.md)、AGENTS.md   |
-| 改动范围 | 追加：新增 `StabilityImageClient`、扩展 `Provider.kt`/`AppConfig.kt`/`ImageProviderService.kt`/`GeminiImageClient.kt`/`Strings.kt`/`SettingsScreen.kt`/`ServiceLocator.kt`/3 个 ViewModel factory/`WorkbenchScreen.kt`、新增 `.github/workflows/android-build.yml`、Room 升级到 2.7.0 |
+| 改动范围 | 追加 2：`app/build.gradle.kts` 接入 `signingConfigs.release`（env 驱动）；`.github/workflows/android-build.yml` 重写为只编译签名 release、自动生成 + cache keystore、自动创建 GitHub Release；`.gitignore` 忽略 keystore；`android/README.md` 更新 Release 规则 |
 | 提交状态 | 见文末「提交状态」                                                                                |
 
 ## 范围核对
@@ -32,6 +32,9 @@
 | Settings UI 增加 Stability 卡片 | `ProviderSection` 增加 `ImageProviders.STABILITY` 分支标签；中英文 `settingsProviderStability` 同步 | `SettingsScreen.kt`、`ui/i18n/Strings.kt` | 已完成 (Completed) |
 | 用 GitHub 编译成安卓 APK | 新增 `.github/workflows/android-build.yml`：push master / `v*` tag / `workflow_dispatch` 触发，ubuntu-latest + JDK 17 + Android SDK 35，产出 debug APK artifact（`gpt-image-playground-debug-apk`） + best-effort unsigned release APK。CI 第三轮（commit `8c123e0`，run `29298514800`）成功，耗时 6m58s | `.github/workflows/android-build.yml`、`android/README.md` 持续集成段 | 已完成 (Completed) |
 | 保留代码仅作 GitHub 参考 | 已澄清：原 `src/`、`src-tauri/`、`pages/`、`api/` 与既有 `build-release.yml`（Tauri 安卓打包）保留不动，仅作为参考，不影响原生工程构建路径 | 仓库根未改动 | 已完成 (Completed)（按澄清后口径） |
+| 追加 2：自动签名 release APK | CI 自动用 `keytool` 生成 RSA 2048 / 100 年有效期 keystore（`gpt-image` 别名），用 `actions/cache` key=`release-keystore-v1` 持久化，所以签名指纹跨 build 稳定，新版可直接覆盖安装旧版。`build.gradle.kts` 通过 env 读取 `KEYSTORE_PASSWORD`/`KEY_ALIAS`/`KEY_PASSWORD` 接入 `signingConfigs.release`；本地无 keystore 时回退到 unsigned，本地开发不回归 | `app/build.gradle.kts`、`.github/workflows/android-build.yml` | 已完成 (Completed) |
+| 追加 2：自动发布到 GitHub Release | push master → 更新滚动 pre-release `continuous`（每次覆盖 APK）；push `v*` tag → 正式 Release；`workflow_dispatch` → 同 master；PR → 只 artifact 不 release。已用 `softprops/action-gh-release@v2` 验证 run `29299187631` 创建了 `continuous` release 并上传 `app-release-488520c.apk`（2,073,880 字节） | `https://github.com/ook826092-cloud/gpt-image-playground/releases/tag/continuous` | 已完成 (Completed) |
+| 追加 2：放弃 debug，只编译 release | CI workflow 删除 `assembleDebug` 与 debug artifact，只跑 `assembleRelease` + `apksigner verify`，artifact 重命名为 `gpt-image-playground-release-apk`（含 short SHA 文件名） | `.github/workflows/android-build.yml` | 已完成 (Completed) |
 
 ## 问题与解决
 
@@ -107,25 +110,43 @@
   - 涉及文件：`Provider.kt`（`const val DEFAULT_MODEL_ID`）、`GeminiImageClient.kt`（`JsonPrimitive("IMAGE")` + import）、`ServiceLocator.kt`（暴露 `application: Application`）、`AlbumViewModel.kt`/`SettingsViewModel.kt`/`WorkbenchViewModel.kt`（factory 改用 `locator.application`）、`SettingsScreen.kt`（`versionName ?: "1.0.0"`）、`WorkbenchScreen.kt`（补 `ImageModelCatalog` import + STABILITY 分支）、`docs/agent-reports/2026-07-14-android-native-kotlin-migration.md`
   - `git push origin master` 输出：`f77f9b8..8c123e0  master -> master`
   - 对应 CI run：`29298514800`（**成功**，耗时 6m58s，APK 产物见下）
+- 追加提交 4（CI 自动签名 + 自动发 Release + 放弃 debug）：
+  - commit hash：`488520c`
+  - commit 标题：`ci(android): drop debug build, auto-sign release, publish to GitHub Releases`
+  - 涉及文件：`app/build.gradle.kts`（`signingConfigs.release` 从 env 读取）、`.github/workflows/android-build.yml`（重写：cache keystore、生成 keystore、只跑 `assembleRelease`、`apksigner verify`、`softprops/action-gh-release@v2` 三种触发分支）、`.gitignore`（忽略 `android/release.keystore` / `*.keystore` / `*.jks`）、`android/README.md`（Release 规则表与下载地址）
+  - `git push origin master` 输出：`f93fbc5..488520c  master -> master`
+  - 对应 CI run：`29299187631`（**成功**，耗时 1m23s，APK 已自动发布到 `continuous` release）
 - 提交身份沿用仓库历史作者 `xxxily <974278171@qq.com>`（通过 `GIT_AUTHOR_*` / `GIT_COMMITTER_*` 环境变量传入，未修改任何 git 配置）。
 - 未提交项：原 `src/`、`src-tauri/`、`pages/`、`api/` 等未改动（按用户「保留不动」口径）。
 
 ## CI APK 产物获取
 
-CI 第三轮（commit `8c123e0`，run `29298514800`）已成功产出 APK，按下列步骤获取：
+CI 第四轮（commit `488520c`，run `29299187631`）已成功产出 **签名 release APK** 并自动发布到 GitHub Release：
 
-1. 访问 `https://github.com/ook826092-cloud/gpt-image-playground/actions/runs/29298514800`
-2. 滚动到底部 Artifacts 区域，下载对应 zip：
-   - `gpt-image-playground-debug-apk`（18,373,049 字节，约 18 MB，**可直接安装**，applicationId = `com.gptimage.playground.debug`）
-   - `gpt-image-playground-release-apk-unsigned`（1,756,173 字节，约 1.7 MB，已 minify + shrink resources，**需自行签名后才能安装**）
-3. zip 解压后即 `app-debug.apk` / `app-release-unsigned.apk`
-4. 后续 push 任何 `android/` 改动或推 `v*` tag 都会自动重新跑此 CI；也可在 Actions 页手动 `Run workflow`
+### 1. 直接下载（已签名，可直接安装）
 
-未签名 release APK 的签名示例（本机执行）：
+- 滚动 pre-release（最新 master）：`https://github.com/ook826092-cloud/gpt-image-playground/releases/download/continuous/app-release-488520c.apk`
+- Release 页面：`https://github.com/ook826092-cloud/gpt-image-playground/releases/tag/continuous`
+- 大小：2,073,880 字节（约 2 MB，已 minify + shrink resources）
+- applicationId：`com.gptimage.playground`
+- 签名证书指纹（CI 自动生成，跨 build 稳定）：
+  - SHA-256：`034dd5a6f6a1121f91f28ed5ad1902b99124246b269b5c639632c4af3ea0e987`
+  - SHA-1：`53f3681c2ab769122565a9456d1da1438f5db0f4`
+  - MD5：`42dbf599594d215a8db6bd8313c35dcb`
+  - DN：`CN=GPT Image Playground, OU=CI Auto Signed, O=Open Source, L=Remote, ST=Remote, C=CN`
 
-```bash
-keytool -genkey -v -keystore release.keystore -alias gpt-image -keyalg RSA -keysize 2048 -validity 10000
-# 然后把 keystore 路径与密码写入 ~/.gradle/gradle.properties（GPTIMAGE_PLAYGROUND_STORE_FILE 等）
-# 或直接用 apksigner：
-apksigner sign --ks release.keystore --out app-release.apk app-release-unsigned.apk
-```
+### 2. 本地副本
+
+- `/workspace/dist/app-release-488520c.apk`（与上面 Release 同一份文件）
+
+### 3. 后续触发方式
+
+- push 任何 `android/` 改动到 master：自动更新 `continuous` 滚动 release
+- 推 `v*` tag（如 `git tag v1.0.1 && git push origin v1.0.1`）：自动创建正式 release `v1.0.1`，附带自动生成的 release notes
+- 在 Actions 页 `Run workflow` 手动触发：更新 `continuous`
+
+### 4. 升级安装说明
+
+由于 CI 用 `actions/cache` 把 `release.keystore` 缓存（key=`release-keystore-v1`），签名指纹稳定，新版 APK 可以**直接覆盖安装**旧版，无需卸载。
+
+> 若某次 cache miss 导致重新生成 keystore，签名指纹会变化，那时需要先卸载旧版才能安装新版。这一点已记录在 workflow notice 里。
