@@ -12,8 +12,9 @@ object ImageProviders {
     const val GOOGLE: ImageProviderId = "google"
     const val SENSENOVA: ImageProviderId = "sensenova"
     const val SEEDREAM: ImageProviderId = "seedream"
+    const val STABILITY: ImageProviderId = "stability"
 
-    val ALL: List<ImageProviderId> = listOf(OPENAI, GOOGLE, SENSENOVA, SEEDREAM)
+    val ALL: List<ImageProviderId> = listOf(OPENAI, GOOGLE, SEEDREAM, SENSENOVA, STABILITY)
 
     fun isKnown(value: String): Boolean = value in ALL
 
@@ -21,6 +22,7 @@ object ImageProviders {
         GOOGLE -> "Google Gemini"
         SENSENOVA -> "SenseNova"
         SEEDREAM -> "Seedream"
+        STABILITY -> "Stability AI"
         else -> "OpenAI Compatible"
     }
 
@@ -28,6 +30,7 @@ object ImageProviders {
         SENSENOVA -> "https://token.sensenova.cn/v1"
         SEEDREAM -> "https://ark.cn-beijing.volces.com/api/v3"
         GOOGLE -> "https://generativelanguage.googleapis.com/v1beta"
+        STABILITY -> "https://api.stability.ai"
         else -> "https://api.openai.com/v1"
     }
 }
@@ -146,6 +149,30 @@ object ImageModelCatalog {
             )
         ),
         ImageModelDefinition(
+            id = "gemini-3-pro-image-preview",
+            label = "Gemini Nano Banana Pro",
+            provider = ImageProviders.GOOGLE,
+            providerLabel = "Google",
+            supportsEditing = true,
+            sizePresets = ImageModelSizePresets(
+                square = "1:1",
+                landscape = "16:9",
+                portrait = "9:16"
+            )
+        ),
+        ImageModelDefinition(
+            id = "gemini-3.1-flash-lite-image",
+            label = "Gemini Nano Banana 2 Lite",
+            provider = ImageProviders.GOOGLE,
+            providerLabel = "Google",
+            supportsEditing = true,
+            sizePresets = ImageModelSizePresets(
+                square = "1:1",
+                landscape = "16:9",
+                portrait = "9:16"
+            )
+        ),
+        ImageModelDefinition(
             id = "sensenova-u1-fast",
             label = "SenseNova U1 Fast",
             provider = ImageProviders.SENSENOVA,
@@ -232,6 +259,34 @@ object ImageModelCatalog {
                 landscape = "2560x1440",
                 portrait = "1440x2560"
             )
+        ),
+        ImageModelDefinition(
+            id = "sd-3.5-large",
+            label = "Stable Diffusion 3.5 Large",
+            provider = ImageProviders.STABILITY,
+            providerLabel = "Stability AI",
+            supportsCustomSize = true,
+            supportsOutputFormat = true,
+            defaultSize = "1:1",
+            sizePresets = ImageModelSizePresets(
+                square = "1:1",
+                landscape = "16:9",
+                portrait = "9:16"
+            )
+        ),
+        ImageModelDefinition(
+            id = "sd-3.5-large-turbo",
+            label = "Stable Diffusion 3.5 Large Turbo",
+            provider = ImageProviders.STABILITY,
+            providerLabel = "Stability AI",
+            supportsCustomSize = true,
+            supportsOutputFormat = true,
+            defaultSize = "1:1",
+            sizePresets = ImageModelSizePresets(
+                square = "1:1",
+                landscape = "16:9",
+                portrait = "9:16"
+            )
         )
     )
 
@@ -245,6 +300,7 @@ object ImageModelCatalog {
             normalized.startsWith("gemini-") -> ImageProviders.GOOGLE
             normalized.startsWith("sensenova-") -> ImageProviders.SENSENOVA
             normalized.startsWith("doubao-seedream-") || normalized.startsWith("doubao-seededit-") -> ImageProviders.SEEDREAM
+            normalized.startsWith("sd-") || normalized.startsWith("stable-") -> ImageProviders.STABILITY
             else -> ImageProviders.OPENAI
         }
     }

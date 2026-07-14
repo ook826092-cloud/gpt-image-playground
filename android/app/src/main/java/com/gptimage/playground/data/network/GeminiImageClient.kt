@@ -41,7 +41,9 @@ class GeminiImageClient(
         val url = buildEndpointUrl(baseUrl, request.model.id, apiKey)
         val body = buildBody(
             prompt = request.prompt,
-            references = emptyList()
+            references = emptyList(),
+            size = request.size,
+            providerOptions = request.model.providerOptions
         )
         val req = buildJsonRequest(url, body)
         val response = execute(req)
@@ -52,7 +54,9 @@ class GeminiImageClient(
         val url = buildEndpointUrl(baseUrl, request.model.id, apiKey)
         val body = buildBody(
             prompt = request.prompt,
-            references = request.referenceImages
+            references = request.referenceImages,
+            size = request.size,
+            providerOptions = request.model.providerOptions
         )
         val req = buildJsonRequest(url, body)
         val response = execute(req)
@@ -77,7 +81,12 @@ class GeminiImageClient(
             .toString()
     }
 
-    private fun buildBody(prompt: String, references: List<ReferenceImage>): String {
+    private fun buildBody(
+        prompt: String,
+        references: List<ReferenceImage>,
+        size: String? = null,
+        providerOptions: Map<String, String> = emptyMap()
+    ): String {
         val parts = buildJsonArray {
             add(buildJsonObject { put("text", prompt) })
             references.forEach { image ->
@@ -102,6 +111,25 @@ class GeminiImageClient(
                     add(buildJsonObject { put("parts", parts) })
                 }
             )
+            // Only forward aspectRatio when the size looks like "W:H"; legacy "WxH" presets
+            // are ignored to avoid breaking the original Nano Banana 2 model catalog entry.
+            val aspectRatio = size?.takeIf { it.matches(ASPECT_RATIO_REGEX) }
+            val imageSize = providerOptions["imageSize"]
+            if (aspectRatio != null || imageSize != null) {
+                put(
+                    "generationConfig",
+                    buildJsonObject {
+                        put("responseModalities", buildJsonArray { add("IMAGE") })
+                        put(
+                            "imageConfig",
+                            buildJsonObject {
+                                if (aspectRatio != null) put("aspectRatio", aspectRatio)
+                                if (imageSize != null) put("imageSize", imageSize)
+                            }
+                        )
+                    }
+                )
+            }
         }.toString()
     }
 
@@ -155,6 +183,8 @@ class GeminiImageClient(
     }
 
     companion object {
+        private val ASPECT_RATIO_REGEX = Regex("^\\d+:\\d+$")
+
         private val defaultJson = Json {
             ignoreUnknownKeys = true
             explicitNulls = false

@@ -9,11 +9,12 @@ import com.gptimage.playground.data.model.ProviderCredentials
 
 /**
  * High-level image generation service. Dispatches to the right underlying provider client
- * (OpenAI-compatible or Gemini) based on the [ImageModelDefinition.provider] of the request.
+ * (OpenAI-compatible, Gemini, or Stability) based on the [ImageModelDefinition.provider] of the request.
  */
 class ImageProviderService(
     private val openAiClient: OpenAIImageClient = OpenAIImageClient(),
-    private val geminiClient: GeminiImageClient = GeminiImageClient()
+    private val geminiClient: GeminiImageClient = GeminiImageClient(),
+    private val stabilityClient: StabilityImageClient = StabilityImageClient()
 ) {
 
     suspend fun generate(
@@ -28,6 +29,8 @@ class ImageProviderService(
         return when (request.model.provider) {
             ImageProviders.GOOGLE ->
                 geminiClient.generate(request, apiKey, baseUrl)
+            ImageProviders.STABILITY ->
+                stabilityClient.generate(request, apiKey, baseUrl)
             else ->
                 openAiClient.generate(request, apiKey, baseUrl)
         }
@@ -46,6 +49,11 @@ class ImageProviderService(
         return when (request.model.provider) {
             ImageProviders.GOOGLE ->
                 geminiClient.edit(request, apiKey, baseUrl)
+            ImageProviders.STABILITY ->
+                throw ProviderException(
+                    kind = ProviderException.Kind.BAD_REQUEST,
+                    message = "Stability SD3 only supports text-to-image, not editing"
+                )
             else ->
                 openAiClient.edit(request, apiKey, baseUrl)
         }

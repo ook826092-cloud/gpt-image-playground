@@ -25,6 +25,7 @@ data class AppConfig(
     val google: ProviderCredentials = ProviderCredentials(),
     val sensenova: ProviderCredentials = ProviderCredentials(),
     val seedream: ProviderCredentials = ProviderCredentials(),
+    val stability: ProviderCredentials = ProviderCredentials(),
     val defaultModelId: String = ImageModelCatalog.DEFAULT_MODEL_ID,
     val defaultSize: String? = null,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -34,6 +35,7 @@ data class AppConfig(
         ImageProviders.GOOGLE -> google
         ImageProviders.SENSENOVA -> sensenova
         ImageProviders.SEEDREAM -> seedream
+        ImageProviders.STABILITY -> stability
         else -> openai
     }
 
@@ -42,13 +44,14 @@ data class AppConfig(
             ImageProviders.GOOGLE -> copy(google = credentials)
             ImageProviders.SENSENOVA -> copy(sensenova = credentials)
             ImageProviders.SEEDREAM -> copy(seedream = credentials)
+            ImageProviders.STABILITY -> copy(stability = credentials)
             else -> copy(openai = credentials)
         }
     }
 
     val hasAnyProviderConfigured: Boolean
         get() = openai.isConfigured || google.isConfigured ||
-            sensenova.isConfigured || seedream.isConfigured
+            sensenova.isConfigured || seedream.isConfigured || stability.isConfigured
 }
 
 /**

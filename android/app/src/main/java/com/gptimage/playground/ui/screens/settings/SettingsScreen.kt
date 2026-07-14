@@ -142,6 +142,7 @@ private fun ProviderSection(
         ImageProviders.GOOGLE -> strings.settingsProviderGoogle
         ImageProviders.SENSENOVA -> strings.settingsProviderSensenova
         ImageProviders.SEEDREAM -> strings.settingsProviderSeedream
+        ImageProviders.STABILITY -> strings.settingsProviderStability
         else -> strings.settingsProviderOpenai
     }
     val defaultBaseUrl = ImageProviders.defaultBaseUrl(providerId)
