@@ -290,8 +290,84 @@ CI 第四轮（commit `488520c`，run `29299187631`）已成功产出 **签名 r
   - 切换模型到 Gemini Nano Banana 2：`StreamingToggleRow` 自动隐藏，回退非流式
   - 切换模型到 Stability SD3.5：同上
   - 流式过程中切换 n=2/3/4：观察每张图完成都会更新 lastResult 并落库（n=4 → 4 条历史记录）
-- **Top 5 蒙版编辑 / inpaint**：下一步可调研 mask 来源（手画 canvas 还是上传图片）+ WorkbenchScreen 是否需要新增 `MaskUploadSection`；当前 `EditRequest.mask` 字段已存在但 UI 未暴露入口
 - **流式取消后的部分图像**：当前实现是「取消即丢弃 partial bitmap」，与 Web 端「取消时仍保留 latestPartialImage 写盘」行为不同；若用户希望取消也保留预览，可在 `WorkbenchViewModel.cancelGenerate` 里把 `streamingPreview` 也落库（但与「用户主动取消」语义有冲突，建议先观察用户反馈）
 - **流式错误 toast**：当前 `GenerationStreamEvent.Failure` 会设置 `error` 字段，UI 会显示 ErrorBanner；但流式过程中可能已收到 partial bitmap，UI 上 partial bitmap 与 ErrorBanner 同时显示，体验略奇怪；后续可考虑流式失败时清掉 partial bitmap
 - **n>1 流式分图 UI**：当前 UI 只显示最后一张图的 partial bitmap；n>1 时用户看不到前面几张图的预览；若需要可改为 LazyColumn 显示每张图的 partial 状态
+
+---
+
+# 追加 5：Top 5 蒙版编辑 / inpaint（OpenAI `/images/edits` mask 字段）
+
+| 字段     | 内容                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------- |
+| 日期     | 2026-07-14（追加 5）                                                                              |
+| 状态     | 已完成 (Completed)（代码已写完 + 静态自检通过；尚未编译/真机回归）                                  |
+| 相关请求 | 用户：「现在的作用就是继续对齐你没有移植完成的功能，继续移植」；「继续」（指继续上一轮 Top 4 之后的下一个 Top 优先级） |
+| 相关文档 | [android/README.md](../../android/README.md)、Web 端 `src/components/editing-form.tsx`（蒙版编辑实现）|
+| 改动范围 | `WorkbenchUiState.kt`、`WorkbenchViewModel.kt`、`WorkbenchScreen.kt`、`ImageProviderService.kt`、`ui/i18n/Strings.kt`；不修改网络层（`OpenAIImageClient.editMultipart`/`editStream` 早已支持 `mask` 字段） |
+
+## 范围核对（追加 5）
+
+| 请求目标 | 实际结果 | 证据 | 状态 |
+| -------- | -------- | ---- | ---- |
+| 蒙版编辑入口 UI | 当 `model.supportsMask == true && referenceImages.isNotEmpty()` 时显示 `MaskEditorSection`：折叠状态显示「创建蒙版」按钮；展开后显示源图 + Canvas 叠加 + 笔刷滑块 + 撤销/清除/保存按钮 | `WorkbenchScreen.kt` 的 `MaskEditorSection`（行 619+） | 已完成 (Completed) |
+| mask 画布 + 触摸绘制 | `BoxWithConstraints` + `Canvas` + `pointerInput { detectDragGestures }`：底层 `Image(bitmap)` 显示源图；上层 `Canvas` 渲染半透明红色笔触预览；触摸坐标按 `srcX = touchX / boxWidthPx * srcWidth` 换算回源图像素空间 | `WorkbenchScreen.kt` 的 `MaskCanvas`（行 804+） | 已完成 (Completed) |
+| 笔刷大小滑块（5–100px） | `Slider(valueRange = 5f..100f)`；默认 20，与 Web 端一致 | `WorkbenchScreen.kt` 行 738+ | 已完成 (Completed) |
+| 笔触点位累积（密集采样） | `DrawnPoint(x, y, size)` 数组；`addMaskLine` 按笔刷半径 1/4 步长插值（与 Web 端 `drawLine` 一致），避免拖动太快出现离散点 | `WorkbenchViewModel.kt` 的 `addMaskPoint`/`addMaskLine` | 已完成 (Completed) |
+| 撤销最后一笔（Web 未实现，Android 补齐） | `undoLastMaskPoint` 删最后一个 `DrawnPoint`；UI 在 `maskDrawnPoints.isEmpty()` 时禁用撤销按钮 | `WorkbenchViewModel.kt`、`WorkbenchScreen.kt` 行 752 | 已完成 (Completed) |
+| 生成 PNG mask 字节 | `saveMask`：① 创建黑底 Bitmap（与源图同尺寸）；② `Canvas.saveLayer` + `PorterDuffXfermode(PorterDuff.Mode.CLEAR)` 在点位上画圆 → 挖空为透明；③ `Bitmap.compress(PNG, 100, baos)` 导出字节。算法与 Web 端 `generateAndSaveMask` 完全一致 | `WorkbenchViewModel.kt` 的 `saveMask`（行 298+） | 已完成 (Completed) |
+| 提交时携带 mask | `EditRequest(mask = maskData)`；`maskData` getter 把 `maskSavedBytes` 封装为 `ReferenceImage(name="generated-mask.png", mimeType="image/png")`；非流式 `editImage` + 流式 `startStreamingGenerate` 的编辑分支均接入 | `WorkbenchViewModel.kt` 行 60、447、561 | 已完成 (Completed) |
+| Provider 拒绝非 OpenAI mask | `ImageProviderService.edit()` 和 `editStream()` 在 mask 非空且 `!model.supportsMask` 时抛 `ProviderException(BAD_REQUEST, "${model.label} 暂不支持蒙版编辑…")`；与 Web 端 `/api/images/route.ts` 拒绝逻辑一致 | `ImageProviderService.kt` 行 47、113 | 已完成 (Completed) |
+| 参考图变化时清掉 mask state | `removeReferenceAt`/`clearReferences` 同时清掉 `maskSourceBitmap`/`maskSourceWidth`/`maskSourceHeight`/`maskDrawnPoints`/`maskSavedBytes`/`maskSaved`/`maskEditorVisible`；mask PNG 必须与第一张参考图同尺寸 | `WorkbenchViewModel.kt` 行 121、137 | 已完成 (Completed) |
+| 提交前校验未保存的 mask | `generate()` 检查 `maskEditorVisible && maskDrawnPoints.isNotEmpty() && !maskSaved` 时阻止提交并设置 `error`，与 Web 端 `saveDrawnMaskBeforeSubmit` 一致 | `WorkbenchViewModel.kt` 行 350 | 已完成 (Completed) |
+| mask 加载 race condition 修复 | `setMaskEditorVisible(true)` 异步加载 Bitmap 后校验 `state.value.referenceImages.firstOrNull()?.uri == targetUri` 才更新 UI，避免加载过程中用户已删/替换参考图导致状态不一致 | `WorkbenchViewModel.kt` 行 196+ | 已完成 (Completed) |
+| i18n 中英双语 | 11 个 `workbenchMask*` 字段在 `Strings` 接口 + `ChineseStrings` + `EnglishStrings` 同步：`workbenchMaskTitle`/`workbenchMaskHint`/`workbenchMaskCreate`/`workbenchMaskEditSaved`/`workbenchMaskClose`/`workbenchMaskBrushSize`/`workbenchMaskSave`/`workbenchMaskClear`/`workbenchMaskUndo`/`workbenchMaskSaved`/`workbenchMaskLoadingSource` | `Strings.kt` 行 76–87、281–291、484–494 | 已完成 (Completed) |
+
+## 问题与解决（追加 5）
+
+| 问题 | 解决办法 | 剩余风险 |
+| ---- | -------- | -------- |
+| `WorkbenchUiState` 新增 `maskSavedBytes: ByteArray?` 字段后，data class 自动生成的 `equals`/`hashCode` 对 `ByteArray` 用引用比较，导致 StateFlow 在内容相同时仍触发 emit | 手动 `override fun equals`/`hashCode`，用 `contentEquals`/`contentHashCode` 处理 `maskSavedBytes`；其余字段保留 data class 的字段逐一比较 | 无 |
+| `PorterDuff.Mode.CLEAR` 在 Android 上必须配合 `Canvas.saveLayer` 才能正确挖空（否则会把整个画布清掉）——这是与 Web canvas `globalCompositeOperation='destination-out'` 的关键差异 | `saveMask` 里用 `canvas.saveLayer(0f, 0f, w, h, null)` 包裹 `drawCircle` 调用，restore 后再 compress；保证只有笔触区域被清为透明，黑底保留 | 无（已对齐 Android 图形栈） |
+| 触摸坐标系换算：`detectDragGestures` 的 `change.position` 是 Compose layout 内部坐标（px），需要换算回源图像素空间（与 `OpenAIImageClient.editMultipart` 期望的 mask 尺寸一致） | `BoxWithConstraints.constraints.maxWidth/Height` 提供渲染后 px 尺寸；`srcX = touchX / boxWidthPx * srcWidth`（`srcY` 同理）；与 Web 端 `scaleX = canvas.width / rect.width` 等价 | 极端情况下 `boxWidthPx == 0`（例如父容器还没完成测量），用 `if (boxWidthPx > 0f) … else 0f` 兜底；不应触发，但兜底防 NPE |
+| `WorkbenchViewModel.maskData` getter 调用 `state.value` 是同步阻塞调用，担心在主线程调用时的性能 | `StateFlow.value` 是无锁的，复杂度 O(1)；只在 `editImage`/`startStreamingGenerate` 调用时触发一次，不在热路径上 | 无 |
+| mask 加载 race condition：用户点击「创建蒙版」→ 异步加载源图 Bitmap → 用户中途删除参考图 → 加载完成回调把 `maskEditorVisible=true`，但参考图已不存在 | 加载完成后校验 `state.value.referenceImages.firstOrNull()?.uri == targetUri` 才更新 UI；不匹配则静默丢弃 | 极小：校验和更新之间仍有微秒级窗口，但不影响功能正确性 |
+| `OpenAIImageClient.editMultipart`/`editStream` 的 mask 字段早就接入但 `ImageProviderService` 没拒绝非 OpenAI 的 mask，会静默丢给 Gemini/Seedream（它们忽略 mask 字段，但用户期望被拒绝） | 在 `ImageProviderService.edit()`/`editStream()` 加 `if (request.mask != null && !request.model.supportsMask) throw ProviderException(BAD_REQUEST)` | 无 |
+| `strings()` 是 `@Composable`，ViewModel 不能直接调用拿 i18n | 沿用现有 `errorMessage` 等方法的硬编码中文模式（与 `WorkbenchViewModel` 现有错误消息风格一致），保持局部一致性；后续可统一引入 `StringResolver` 接口让 ViewModel 也能拿 i18n | 后续若要 i18n ViewModel 错误消息需要重构 |
+| Web 端没有撤销/重做，但 Android 端补齐了撤销（`undoLastMaskPoint`），原因：`DrawnPoint[]` 天然支持 pop 末尾点，成本极低 | 同上 | 无 |
+| 模型不支持 mask 时 UI 应该完全隐藏入口（不能像流式那样显示开关但静默回退） | `MaskEditorSection` 的渲染条件 `state.model?.supportsMask == true && state.referenceImages.isNotEmpty()` 直接控制可见性；不显示开关 | 无 |
+
+## 验证（追加 5）
+
+| 检查项 | 命令或场景 | 结果 |
+| ------ | ---------- | ---- |
+| mask i18n 字段中英双语同步 | `Grep workbenchMask Strings.kt` | 接口 11 个字段，Chinese 11 行，English 11 行；3 处一一对应 |
+| mask UI 字段引用全部存在 | `Grep workbenchMask WorkbenchScreen.kt` | 13 处引用全部在 `MaskEditorSection` 内，每个字段都有对应实现 |
+| ViewModel mask 方法签名一致 | `Grep setMaskEditorVisible\|setMaskBrushSize\|addMaskPoint\|addMaskLine\|undoLastMaskPoint\|clearMask\|saveMask WorkbenchViewModel.kt` | 7 个 public 方法齐备；调用点（WorkbenchScreen 行 191–200）参数匹配 |
+| `EditRequest.mask` 字段在两处编辑路径都接入 | `Grep "mask = maskData" WorkbenchViewModel.kt` | 2 处（`editImage` 行 561 + `startStreamingGenerate` 编辑分支 行 447） |
+| `ImageProviderService` 两处 mask 拒绝齐备 | `Grep "request.mask != null && !request.model.supportsMask" ImageProviderService.kt` | 2 处（`edit` 行 47 + `editStream` 行 113） |
+| `DrawnPoint` 类型定义存在 | `Grep "data class DrawnPoint" WorkbenchUiState.kt` | 1 处，在 `WorkbenchUiState.kt` 末尾 |
+| `MaskCanvas` 触摸坐标换算正确 | 静态走查 `srcX = touchX / boxWidthPx * srcWidth` | 与 Web `scaleX = canvas.width / rect.width` 等价；BoxWithConstraints 保证 boxWidthPx > 0 |
+| `PorterDuff.Mode.CLEAR` + `saveLayer` 算法正确 | 静态走查 `saveMask` | 1) drawColor(BLACK) → 2) saveLayer → 3) drawCircle with CLEAR xfermode → 4) restore → 5) compress PNG；与 Web `destination-out` 等价 |
+| 未使用 imports 清理 | 静态走查 `WorkbenchViewModel.kt` 顶部 imports | `atan2`/`cos`/`hypot`/`max`/`sin`/`Bitmap`/`Canvas`/`Color`/`Paint`/`PorterDuff`/`PorterDuffXfermode`/`ByteArrayOutputStream` 全部已使用；移除 `workbenchMaskSaveBeforeSubmit` 未用 i18n 字段 |
+| 编译验证 | `./gradlew assembleDebug` | **未执行**（沙箱无 Android SDK；用户明确要求「现在不要编译」） |
+| 真机/模拟器运行 | — | **未执行**（同上） |
+| 浅色/深色 / 移动端布局 | — | **未执行**（同上；UI 使用 `MaterialTheme.colorScheme.surfaceContainerLow`/`primary`/`onSurfaceVariant` 等语义色，理论上自动适配双主题） |
+
+## 后续建议（追加 5）
+
+- **真机/模拟器回归以下场景**：
+  - OpenAI gpt-image-2 + 一张参考图：点击「创建蒙版」→ 等待加载 → 在源图上拖动绘制 → 调整笔刷大小 → 保存 → 观察右上角出现「已保存」徽标
+  - 同上，提交后观察 OpenAI 是否仅重绘透明区域
+  - 撤销按钮：撤销最后一笔后「已保存」徽标消失，需重新保存
+  - 清除按钮：清空所有点位后 maskSavedBytes 也清掉
+  - 删除参考图 → mask 编辑器自动收起 + 清掉所有 mask state
+  - 切换到 Gemini Nano Banana 2 + 参考图：mask 编辑入口完全不显示（验证 `supportsMask == false` 的隐藏逻辑）
+  - 同上提交：服务端不会被 mask 干扰（maskData 为 null，Gemini 客户端忽略 mask 字段）
+  - race condition：点击「创建蒙版」后立刻删除参考图，加载完成回调应静默丢弃，不应让 maskEditorVisible 复活
+- **HiDPI / 大尺寸源图**：当前 `loadReferenceBitmap` 直接 `BitmapFactory.decodeStream` 不做下采样；若用户选 4K+ 大图，可能 OOM；可后续加 `BitmapFactory.Options.inSampleSize` 按 `min(srcW/2048, srcH/2048)` 下采样
+- **mask 上传**：Web 端有「上传已有 PNG」入口；Android 端可后续补一个 `OpenDocument` launcher 接受 `image/png`，校验尺寸与源图一致后直接赋值给 `maskSavedBytes`
+- **Canvas 触摸的 a11y**：当前 `pointerInput` 仅响应触摸/鼠标；TalkBack 用户无法操作。Web 端在需求文档里也标注了 a11y 为 ⏳ 待办；后续可考虑加 `Modifier.semantics { role = Role.Image; contentDescription = "Mask editor canvas" }`
+- **流式 + mask 组合**：当前 `editStream` 也接入了 mask（`mask = maskData`）；但 OpenAI 流式编辑 + mask 的实际兼容性需要真机回归验证（理论上应支持，但 Web 端目前只在非流式编辑路径暴露 mask 入口）
+- **错误消息 i18n**：`WorkbenchViewModel.errorMessage` 与 mask 提交前校验都是硬编码中文；后续可统一引入 `StringResolver` 接口让 ViewModel 也能拿 i18n
 

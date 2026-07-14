@@ -1,6 +1,12 @@
 package com.gptimage.playground.ui.screens.workbench
 
 import android.app.Application
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
@@ -35,7 +41,13 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.max
+import kotlin.math.sin
 
 class WorkbenchViewModel(
     application: Application,
@@ -44,6 +56,22 @@ class WorkbenchViewModel(
 ) : AndroidViewModel(application) {
 
     private val local = MutableStateFlow(WorkbenchUiState())
+
+    private val maskData: DataReferenceImage?
+        get() = state.value.maskSavedBytes?.let { bytes ->
+            DataReferenceImage(
+                name = "generated-mask.png",
+                mimeType = "image/png",
+                data = bytes
+            )
+        }
+
+    companion object {
+        /** 笔刷半径下限（像素），与 Web 端一致。 */
+        const val MIN_BRUSH_SIZE = 5
+        /** 笔刷半径上限（像素），与 Web 端一致。 */
+        const val MAX_BRUSH_SIZE = 100
+    }
 
     /** 当前流式生成的 Job，用于 [cancelGenerate] 主动取消。 */
     private var generateJob: Job? = null
@@ -110,10 +138,31 @@ class WorkbenchViewModel(
     fun removeReferenceAt(index: Int) = local.update {
         val updated = it.referenceImages.toMutableList()
         if (index in updated.indices) updated.removeAt(index)
-        it.copy(referenceImages = updated)
+        // 参考图变化时清掉 mask state：mask 必须与第一张参考图尺寸一致
+        it.copy(
+            referenceImages = updated,
+            maskSourceBitmap = null,
+            maskSourceWidth = 0,
+            maskSourceHeight = 0,
+            maskDrawnPoints = emptyList(),
+            maskSavedBytes = null,
+            maskSaved = false,
+            maskEditorVisible = false
+        )
     }
 
-    fun clearReferences() = local.update { it.copy(referenceImages = emptyList()) }
+    fun clearReferences() = local.update {
+        it.copy(
+            referenceImages = emptyList(),
+            maskSourceBitmap = null,
+            maskSourceWidth = 0,
+            maskSourceHeight = 0,
+            maskDrawnPoints = emptyList(),
+            maskSavedBytes = null,
+            maskSaved = false,
+            maskEditorVisible = false
+        )
+    }
 
     fun useHistoryItemAsReference(item: HistoryItem) {
         val file = java.io.File(item.imagePath)
@@ -136,11 +185,178 @@ class WorkbenchViewModel(
         local.update { it.copy(prompt = item.prompt) }
     }
 
+    // ------------------------------------------------------------------
+    // Mask 蒙版编辑
+    // ------------------------------------------------------------------
+
+    /**
+     * 切换蒙版编辑器可见性。展开前会异步加载第一张参考图的 Bitmap + 尺寸。
+     * 如果当前模型不支持 mask（[ImageModelDefinition.supportsMask]）或没有参考图，则忽略。
+     */
+    fun setMaskEditorVisible(visible: Boolean) {
+        val current = state.value
+        if (visible) {
+            val model = current.model
+            if (model?.supportsMask != true) return
+            if (current.referenceImages.isEmpty()) return
+            val targetUri = current.referenceImages.first().uri
+            // 异步加载源图 Bitmap
+            viewModelScope.launch {
+                val bitmap = loadReferenceBitmap(current.referenceImages.first())
+                if (bitmap != null) {
+                    // 加载过程中用户可能已删除/替换了参考图，校验后再更新 UI
+                    val stillValid = state.value.referenceImages.firstOrNull()?.uri == targetUri
+                    if (stillValid) {
+                        local.update {
+                            it.copy(
+                                maskEditorVisible = true,
+                                maskSourceBitmap = bitmap,
+                                maskSourceWidth = bitmap.width,
+                                maskSourceHeight = bitmap.height
+                            )
+                        }
+                    }
+                } else {
+                    local.update {
+                        it.copy(error = "无法读取参考图，蒙版编辑器无法打开")
+                    }
+                }
+            }
+        } else {
+            local.update { it.copy(maskEditorVisible = false) }
+        }
+    }
+
+    fun setMaskBrushSize(size: Int) = local.update {
+        it.copy(maskBrushSize = size.coerceIn(MIN_BRUSH_SIZE, MAX_BRUSH_SIZE))
+    }
+
+    /**
+     * 添加一个笔触点位。坐标必须基于源图原始像素空间（由 UI 层做换算）。
+     * 添加点位会自动把 [WorkbenchUiState.maskSaved] 置为 false（点位变化后旧 mask 失效）。
+     */
+    fun addMaskPoint(x: Float, y: Float) = local.update {
+        it.copy(
+            maskDrawnPoints = it.maskDrawnPoints + DrawnPoint(x, y, it.maskBrushSize.toFloat()),
+            maskSaved = false,
+            maskSavedBytes = null
+        )
+    }
+
+    /**
+     * 在两点间按笔刷半径 1/4 步长插值，避免拖动太快出现离散点。
+     * 对齐 Web 端 drawLine 算法。
+     */
+    fun addMaskLine(fromX: Float, fromY: Float, toX: Float, toY: Float) {
+        val brush = state.value.maskBrushSize.toFloat()
+        val dx = toX - fromX
+        val dy = toY - fromY
+        val dist = hypot(dx, dy)
+        val step = max(1f, brush / 4f)
+        val angle = atan2(dy, dx)
+        val newPoints = mutableListOf<DrawnPoint>()
+        var i = step
+        while (i < dist) {
+            val x = fromX + cos(angle) * i
+            val y = fromY + sin(angle) * i
+            newPoints += DrawnPoint(x, y, brush)
+            i += step
+        }
+        newPoints += DrawnPoint(toX, toY, brush)
+        if (newPoints.isNotEmpty()) {
+            local.update {
+                it.copy(
+                    maskDrawnPoints = it.maskDrawnPoints + newPoints,
+                    maskSaved = false,
+                    maskSavedBytes = null
+                )
+            }
+        }
+    }
+
+    /** 撤销最近一笔（删除最后一个点位）。Web 端未实现，Android 端补齐。 */
+    fun undoLastMaskPoint() = local.update {
+        if (it.maskDrawnPoints.isEmpty()) return@update it
+        val updated = it.maskDrawnPoints.dropLast(1)
+        it.copy(
+            maskDrawnPoints = updated,
+            maskSaved = false,
+            maskSavedBytes = null
+        )
+    }
+
+    fun clearMask() = local.update {
+        it.copy(
+            maskDrawnPoints = emptyList(),
+            maskSavedBytes = null,
+            maskSaved = false
+        )
+    }
+
+    /**
+     * 把当前 [WorkbenchUiState.maskDrawnPoints] 生成 PNG 字节并保存到 [WorkbenchUiState.maskSavedBytes]。
+     * 算法与 Web 端 `generateAndSaveMask` 一致：
+     *   1. 创建黑底 Bitmap（与源图同尺寸）
+     *   2. 用 [PorterDuff.Mode.CLEAR] 在 [Canvas.saveLayer] 离屏图层上画圆，把笔触区域挖空为透明
+     *   3. 压缩为 PNG
+     * OpenAI `/images/edits` 接受「透明像素 = 要重绘区域」的 mask，与该算法匹配。
+     */
+    fun saveMask() {
+        val current = state.value
+        val w = current.maskSourceWidth
+        val h = current.maskSourceHeight
+        val points = current.maskDrawnPoints
+        if (w <= 0 || h <= 0 || points.isEmpty()) return
+
+        viewModelScope.launch {
+            val bytes = withContext(Dispatchers.IO) {
+                val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(bmp)
+                canvas.drawColor(Color.BLACK)
+                // PorterDuff.Mode.CLEAR 必须配合 saveLayer 才能正确挖空（否则会把整个画布清掉）
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.BLACK
+                    xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+                }
+                canvas.saveLayer(0f, 0f, w.toFloat(), h.toFloat(), null)
+                points.forEach { p ->
+                    canvas.drawCircle(p.x, p.y, p.size, paint)
+                }
+                canvas.restore()
+                val baos = ByteArrayOutputStream()
+                bmp.compress(Bitmap.CompressFormat.PNG, 100, baos)
+                bmp.recycle()
+                baos.toByteArray()
+            }
+            local.update {
+                it.copy(maskSavedBytes = bytes, maskSaved = true)
+            }
+        }
+    }
+
+    private suspend fun loadReferenceBitmap(ref: ReferenceImageUi): Bitmap? =
+        withContext(Dispatchers.IO) {
+            val context = getApplication<Application>()
+            try {
+                context.contentResolver.openInputStream(ref.uri)?.use { input ->
+                    BitmapFactory.decodeStream(input)
+                }
+            } catch (e: Throwable) {
+                null
+            }
+        }
+
     fun generate() {
         val current = state.value
         val model = current.model ?: return
         if (current.prompt.isBlank()) return
         if (!current.providerConfigured) return
+
+        // 提交前校验：mask 编辑模式下若用户画了点位但还没保存，阻止提交
+        if (current.maskEditorVisible && current.maskDrawnPoints.isNotEmpty() && !current.maskSaved) {
+            local.update { it.copy(error = "提交前请先保存已绘制的蒙版") }
+            return
+        }
 
         // 仅 OpenAI 系列且 model.supportsStreaming 时走流式；其他情况一律走非流式
         val useStreaming = current.streamingEnabled &&
@@ -234,6 +450,7 @@ class WorkbenchViewModel(
                     model = model,
                     prompt = current.prompt,
                     referenceImages = references,
+                    mask = maskData,
                     n = current.count,
                     size = current.size,
                     quality = current.quality,
@@ -347,6 +564,7 @@ class WorkbenchViewModel(
             model = model,
             prompt = current.prompt,
             referenceImages = references,
+            mask = maskData,
             n = current.count,
             size = current.size,
             quality = current.quality,

@@ -43,6 +43,13 @@ class ImageProviderService(
     ): GenerationResult {
         require(request.prompt.isNotBlank()) { "Prompt must not be blank" }
         require(request.referenceImages.isNotEmpty()) { "Edit requires at least one reference image" }
+        // 拒绝非 OpenAI provider 的 mask：Gemini / SenseNova / Seedream / Stability 全部不支持
+        if (request.mask != null && !request.model.supportsMask) {
+            throw ProviderException(
+                kind = ProviderException.Kind.BAD_REQUEST,
+                message = "${request.model.label} 暂不支持蒙版编辑，请移除蒙版后重试"
+            )
+        }
         val apiKey = requireApiKey(credentials, request.model)
         val baseUrl = credentials.baseUrl.ifBlank {
             ImageProviders.defaultBaseUrl(request.model.provider)
@@ -101,6 +108,13 @@ class ImageProviderService(
         require(request.referenceImages.isNotEmpty()) { "Edit requires at least one reference image" }
         require(request.model.supportsStreaming) {
             "Model ${request.model.id} does not support streaming"
+        }
+        // 与非流式 edit 一致：拒绝非 OpenAI provider 的 mask 请求
+        if (request.mask != null && !request.model.supportsMask) {
+            throw ProviderException(
+                kind = ProviderException.Kind.BAD_REQUEST,
+                message = "${request.model.label} 暂不支持蒙版编辑，请移除蒙版后重试"
+            )
         }
         val apiKey = requireApiKey(credentials, request.model)
         val baseUrl = credentials.baseUrl.ifBlank {

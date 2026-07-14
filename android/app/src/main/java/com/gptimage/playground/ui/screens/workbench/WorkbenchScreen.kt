@@ -3,9 +3,12 @@ package com.gptimage.playground.ui.screens.workbench
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -28,13 +31,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.Brush
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material.icons.outlined.Undo
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedButton
@@ -47,6 +54,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -61,7 +69,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -173,6 +184,22 @@ fun WorkbenchScreen(
                 onClear = viewModel::clearReferences,
                 modifier = Modifier.fillMaxWidth()
             )
+
+            // 蒙版编辑入口：仅当模型 supportsMask 且已有参考图时显示入口按钮；
+            // 展开后会显示画布 + 笔刷控件
+            if (state.model?.supportsMask == true && state.referenceImages.isNotEmpty()) {
+                MaskEditorSection(
+                    state = state,
+                    onToggleEditor = viewModel::setMaskEditorVisible,
+                    onBrushSizeChange = viewModel::setMaskBrushSize,
+                    onAddPoint = viewModel::addMaskPoint,
+                    onAddLine = viewModel::addMaskLine,
+                    onClearMask = viewModel::clearMask,
+                    onUndoLastPoint = viewModel::undoLastMaskPoint,
+                    onSaveMask = viewModel::saveMask,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
 
             GenerateButton(
                 enabled = state.prompt.isNotBlank() && state.providerConfigured && !state.isGenerating,
@@ -578,6 +605,279 @@ private fun ReferenceImageCard(
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onPrimary
             )
+        }
+    }
+}
+
+/**
+ * 蒙版编辑器区。折叠时只显示一个入口按钮（已保存时显示「编辑已保存蒙版」，否则「创建蒙版」）。
+ * 展开时显示：源图 + Canvas 叠加层、笔刷大小滑块、保存/清除/撤销按钮、已保存状态。
+ *
+ * 触摸坐标系换算：BoxWithConstraints 提供渲染后的 px 尺寸，按 scaleX = srcW / maxWidth
+ * 把触摸 (x, y) 换算回源图像素空间——与 OpenAI mask 字段必须与源图同尺寸的约束对齐。
+ */
+@Composable
+private fun MaskEditorSection(
+    state: WorkbenchUiState,
+    onToggleEditor: (Boolean) -> Unit,
+    onBrushSizeChange: (Int) -> Unit,
+    onAddPoint: (Float, Float) -> Unit,
+    onAddLine: (Float, Float, Float, Float) -> Unit,
+    onClearMask: () -> Unit,
+    onUndoLastPoint: () -> Unit,
+    onSaveMask: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val strings = LocalStrings.current
+    val srcBitmap = state.maskSourceBitmap
+    val srcW = state.maskSourceWidth
+    val srcH = state.maskSourceHeight
+    val hasSource = srcBitmap != null && srcW > 0 && srcH > 0
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Brush,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = strings.workbenchMaskTitle,
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f)
+                )
+                if (state.maskSaved) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Outlined.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = strings.workbenchMaskSaved,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            Text(
+                text = strings.workbenchMaskHint,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            // 入口按钮：未展开时显示
+            if (!state.maskEditorVisible) {
+                Button(
+                    onClick = { onToggleEditor(true) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        imageVector = if (state.maskSaved) Icons.Outlined.Brush else Icons.Outlined.Brush,
+                        contentDescription = null
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (state.maskSaved) strings.workbenchMaskEditSaved
+                        else strings.workbenchMaskCreate
+                    )
+                }
+            } else {
+                // 展开后：画布 + 笔刷控件
+                if (!hasSource) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            strings.workbenchMaskLoadingSource,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                } else {
+                    MaskCanvas(
+                        sourceBitmap = srcBitmap!!,
+                        srcWidth = srcW,
+                        srcHeight = srcH,
+                        drawnPoints = state.maskDrawnPoints,
+                        onAddPoint = onAddPoint,
+                        onAddLine = onAddLine
+                    )
+
+                    // 笔刷大小滑块
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = strings.workbenchMaskBrushSize,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                text = "${state.maskBrushSize}px",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Slider(
+                            value = state.maskBrushSize.toFloat(),
+                            onValueChange = { onBrushSizeChange(it.toInt()) },
+                            valueRange = WorkbenchViewModel.MIN_BRUSH_SIZE.toFloat()..
+                                WorkbenchViewModel.MAX_BRUSH_SIZE.toFloat()
+                        )
+                    }
+
+                    // 按钮行：撤销 / 清除 / 保存
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilledTonalButton(
+                            onClick = onUndoLastPoint,
+                            enabled = state.maskDrawnPoints.isNotEmpty(),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Outlined.Undo, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(strings.workbenchMaskUndo)
+                        }
+                        FilledTonalButton(
+                            onClick = onClearMask,
+                            enabled = state.maskDrawnPoints.isNotEmpty(),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Outlined.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(strings.workbenchMaskClear)
+                        }
+                        Button(
+                            onClick = onSaveMask,
+                            enabled = state.maskDrawnPoints.isNotEmpty() && !state.maskSaved,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Outlined.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(strings.workbenchMaskSave)
+                        }
+                    }
+
+                    // 关闭按钮
+                    TextButton(
+                        onClick = { onToggleEditor(false) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(strings.workbenchMaskClose)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 蒙版画布。底层是源图（Bitmap），叠加 Canvas 用于显示笔触预览 + 接收触摸输入。
+ *
+ * 触摸坐标换算：[BoxWithConstraints] 提供 maxWidth/maxHeight（px）；
+ *   srcX = (touchX / maxWidth) * srcWidth
+ *   srcY = (touchY / maxHeight) * srcHeight
+ * 这与 Web 端的 `scaleX = canvas.width / rect.width` 等价。
+ */
+@Composable
+private fun MaskCanvas(
+    sourceBitmap: android.graphics.Bitmap,
+    srcWidth: Int,
+    srcHeight: Int,
+    drawnPoints: List<DrawnPoint>,
+    onAddPoint: (Float, Float) -> Unit,
+    onAddLine: (Float, Float, Float, Float) -> Unit
+) {
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(srcWidth.toFloat() / srcHeight.toFloat())
+            .clip(RoundedCornerShape(12.dp))
+    ) {
+        val boxWidthPx = constraints.maxWidth.toFloat()
+        val boxHeightPx = constraints.maxHeight.toFloat()
+
+        // 安全：BoxWithConstraints 在 fillMaxWidth + aspectRatio 下 maxWidth/maxHeight 应该都 > 0
+        val toSrcX: (Float) -> Float = { touchX ->
+            if (boxWidthPx > 0f) touchX / boxWidthPx * srcWidth else 0f
+        }
+        val toSrcY: (Float) -> Float = { touchY ->
+            if (boxHeightPx > 0f) touchY / boxHeightPx * srcHeight else 0f
+        }
+
+        // 底层源图
+        Image(
+            bitmap = sourceBitmap.asImageBitmap(),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // 触摸输入 + 笔触预览叠加
+        var lastSrc: Offset? by remember { mutableStateOf(null) }
+
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = { offset ->
+                            val sx = toSrcX(offset.x)
+                            val sy = toSrcY(offset.y)
+                            onAddPoint(sx, sy)
+                            lastSrc = Offset(sx, sy)
+                        },
+                        onDrag = { change, _ ->
+                            change.consume()
+                            val sx = toSrcX(change.position.x)
+                            val sy = toSrcY(change.position.y)
+                            val prev = lastSrc
+                            if (prev != null) {
+                                onAddLine(prev.x, prev.y, sx, sy)
+                            } else {
+                                onAddPoint(sx, sy)
+                            }
+                            lastSrc = Offset(sx, sy)
+                        },
+                        onDragEnd = { lastSrc = null },
+                        onDragCancel = { lastSrc = null }
+                    )
+                }
+        ) {
+            // 半透明红色笔触预览，让用户能看见画在哪里
+            val previewColor = Color.Red.copy(alpha = 0.5f)
+            drawnPoints.forEach { p ->
+                // 把源图坐标换算回 Canvas 内部坐标（与 BoxWithConstraints 同尺寸）
+                val cx = p.x / srcWidth * size.width
+                val cy = p.y / srcHeight * size.height
+                val radiusPx = p.size / srcWidth * size.width
+                drawCircle(
+                    color = previewColor,
+                    radius = radiusPx.coerceAtLeast(1f),
+                    center = Offset(cx, cy)
+                )
+            }
         }
     }
 }
