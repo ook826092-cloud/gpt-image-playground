@@ -1,5 +1,6 @@
 package com.gptimage.playground
 
+import android.app.Application
 import android.content.Context
 import com.gptimage.playground.data.db.AppDatabase
 import com.gptimage.playground.data.datastore.SettingsStore
@@ -14,6 +15,14 @@ import java.io.File
  * Avoids the heavy Hilt/KSP setup while still providing singletons to the ViewModels.
  */
 class ServiceLocator(val context: Context) {
+
+    /**
+     * The process [Application], exposed for [androidx.lifecycle.AndroidViewModel] factories
+     * that require an `Application` rather than a plain [Context]. Safe because [ServiceLocator]
+     * is constructed from [PlaygroundApp.onCreate] with `this` (an Application).
+     */
+    val application: Application
+        get() = context.applicationContext as Application
 
     private val settingsStore: SettingsStore by lazy { SettingsStore(context.applicationContext) }
 

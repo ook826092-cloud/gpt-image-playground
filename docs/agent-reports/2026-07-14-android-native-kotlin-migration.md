@@ -2,11 +2,11 @@
 
 | 字段     | 内容                                                                                              |
 | -------- | ------------------------------------------------------------------------------------------------- |
-| 日期     | 2026-07-14                                                                                        |
-| 状态     | 部分完成 (Partial)                                                                                |
-| 相关请求 | 用户：「将这个项目由网页套壳变成安卓原生项目…尽量使用 Kotlin…只需要安卓版本…删除其他版本冗余代码…推送到 GitHub」 |
+| 日期     | 2026-07-14（迁移）/ 2026-07-14（追加：供应商扩展 + GitHub Actions APK CI）                         |
+| 状态     | 部分完成 (Partial)（CI APK 验证进行中，见文末「提交状态」）                                       |
+| 相关请求 | 用户：「将这个项目由网页套壳变成安卓原生项目…尽量使用 Kotlin…只需要安卓版本…删除其他版本冗余代码…推送到 GitHub」；后续追加：「查网上有哪些可以添加的供应商/端口…落后的尽量赶上…保留代码只在 GitHub 留作参考…用 GitHub 编译成安卓 APK」 |
 | 相关文档 | [android/README.md](../../android/README.md)、[docs/android-apk.md](../android-apk.md)、AGENTS.md   |
-| 改动范围 | 新增 `android/` 原生工程（Gradle + Kotlin + Compose）；原 `src/`、`src-tauri/` 等按用户要求保留不动 |
+| 改动范围 | 追加：新增 `StabilityImageClient`、扩展 `Provider.kt`/`AppConfig.kt`/`ImageProviderService.kt`/`GeminiImageClient.kt`/`Strings.kt`/`SettingsScreen.kt`、新增 `.github/workflows/android-build.yml`、Room 升级到 2.7.0 |
 | 提交状态 | 见文末「提交状态」                                                                                |
 
 ## 范围核对
@@ -26,6 +26,12 @@
 | 推送到 GitHub | 见文末「提交状态」 | git log | 见文末 |
 | 国际化（中英文） | 运行时 `LocalStrings` 切换；中英两套 `Strings`；SYSTEM 跟随设备 locale | `ui/i18n/Strings.kt`、`MainActivity.resolveStrings()` | 已完成 (Completed) |
 | 浅色/深色主题 | Material 3 双色板 + `values-night/themes.xml`；设置可选 Light/Dark/System | `ui/theme/**`、`res/values-night/themes.xml` | 已完成 (Completed) |
+| 调研网上可补的供应商/端口 | 调研 2026 市场主流图像生成供应商：Stability AI（SD3.5 Large/Turbo 直连）落地；fal.ai/Replicate 为聚合器（队列/轮询模式，暂未内置）；OpenRouter 已有 OpenAI 兼容 `/v1/images/generations`，可直接走「OpenAI 兼容」供应商；Ideogram 暂未内置 | `data/network/StabilityImageClient.kt`、`android/README.md` 市场调研段 | 已完成 (Completed) |
+| 落后功能补齐（追赶 2026） | 新增 Stability AI（SD 3.5 Large/Large Turbo，multipart `v2beta/stable-image/generate/sd3`）；新增 Gemini Nano Banana Pro（gemini-3-pro-image-preview）与 Nano Banana 2 Lite（gemini-3.1-flash-lite-image）；Gemini 客户端新增 `generationConfig.imageConfig.aspectRatio`/`imageSize` 转发；DALL-E 3 已于 2026-03 退役，项目本就不含，无遗留 | `Provider.kt`、`GeminiImageClient.kt`、`StabilityImageClient.kt`、`ImageProviderService.kt` | 已完成 (Completed) |
+| Stability AI 供应商集成 | 新增 `ImageProviders.STABILITY`；`AppConfig.stability` 持久化；`StabilityImageClient` 走 multipart form-data（`prompt`/`model`/`mode`/`aspect_ratio`/`output_format`）；`ImageProviderService.edit()` 对 Stability 抛 `ProviderException`（SD3 仅文生图） | `data/network/StabilityImageClient.kt`、`data/model/Provider.kt`、`AppConfig.kt`、`ImageProviderService.kt` | 已完成 (Completed) |
+| Settings UI 增加 Stability 卡片 | `ProviderSection` 增加 `ImageProviders.STABILITY` 分支标签；中英文 `settingsProviderStability` 同步 | `SettingsScreen.kt`、`ui/i18n/Strings.kt` | 已完成 (Completed) |
+| 用 GitHub 编译成安卓 APK | 新增 `.github/workflows/android-build.yml`：push master / `v*` tag / `workflow_dispatch` 触发，ubuntu-latest + JDK 17 + Android SDK 35，产出 debug APK artifact（`gpt-image-playground-debug-apk`） + best-effort unsigned release APK | `.github/workflows/android-build.yml`、`android/README.md` 持续集成段 | 部分完成 (Partial)（首轮 CI 失败→已修 Room 版本，二轮验证中） |
+| 保留代码仅作 GitHub 参考 | 已澄清：原 `src/`、`src-tauri/`、`pages/`、`api/` 与既有 `build-release.yml`（Tauri 安卓打包）保留不动，仅作为参考，不影响原生工程构建路径 | 仓库根未改动 | 已完成 (Completed)（按澄清后口径） |
 
 ## 问题与解决
 
@@ -40,6 +46,8 @@
 | `libs.versions.toml` / `build.gradle.kts` / `proguard-rules.pro` 声明了 Retrofit 依赖与 keep 规则，但网络层实际只用 OkHttp | 删除全部 Retrofit 相关依赖与 proguard 规则，保留 OkHttp/Room/kotlinx.serialization keep 规则 | 无 |
 | `setDecorFitsSystemWindows(window, true)` 与 `enableEdgeToEdge()` 语义冲突 | 维持现状未改（未在真机验证前不贸然切换），见「验证」 | 可能在某些设备出现状态栏区域双倍 padding，需真机回归 |
 | 无 Android SDK 环境，无法执行 `./gradlew assembleDebug` | 做静态走查（导入、API 签名、作用域、proguard） | 无法保证零编译错误，需用户在 Android Studio 中首次构建 |
+| 追加：GitHub Actions 首轮 CI 编译失败，`java.lang.IllegalStateException: unexpected jvm signature V` 出现在 Room KSP 处理 `@Query DELETE ...` 返回 `Unit` 的 DAO 方法（Room 2.6.1 + KSP 2.0.21-1.0.28 已知不兼容） | 把 Room 从 2.6.1 升到 2.7.0（含上游修复），并提交 `f77f9b8` 推送触发新一轮 CI | 无（待二轮 CI 验证通过后确认） |
+| 追加：Gemini 新模型（Nano Banana Pro/Lite）使用 aspect ratio（"1:1"）而非像素尺寸（"1024x1024"），若直接转发会让旧 `gemini-3.1-flash-image-preview` 模型回归 | 在 `GeminiImageClient.buildBody()` 用 `ASPECT_RATIO_REGEX = ^\d+:\d+$` 区分：命中才走 `generationConfig.imageConfig.aspectRatio`，否则保持原逻辑 | 无 |
 
 ## 验证
 
@@ -56,6 +64,10 @@
 | 编译验证 | `./gradlew assembleDebug` | **未执行**（沙箱无 Android SDK，JDK 25 + Gradle 8.14.4 在但不具备 Android 编译能力） |
 | 真机/模拟器运行 | — | **未执行**（无设备与 SDK） |
 | 浅色/深色 / 移动端布局 | — | **未执行**（同上） |
+| 追加：新增 Stability 客户端编译可达性 | 静态检查 `StabilityImageClient.kt` 的 multipart 构造与 `Regex` 用法；`ImageProviderService` dispatch 已加 `STABILITY` 分支 | 通过静态走查；待 CI APK 编译通过后确认 |
+| 追加：CI APK 构建（首轮） | GitHub Actions run `29297877429`（commit `486e7ea`） | **失败**：Room KSP `unexpected jvm signature V`（见「问题与解决」） |
+| 追加：CI APK 构建（二轮） | GitHub Actions run `29298137232`（commit `f77f9b8`，Room 升 2.7.0） | **进行中**，待完成确认 |
+| 追加：原 `src/`/`src-tauri/` 路径未被新工程引用 | `Grep "import.*src.lib"` 在 `android/` 下无匹配；`build.gradle.kts` 不包含任何 web 路径 | 通过 |
 
 ## 后续建议
 
@@ -68,11 +80,31 @@
 
 ## 提交状态
 
-- 已提交并推送到 `origin/master`：
+- 已提交并推送到 `origin/master`（迁移主体）：
   - commit hash：`25501a9`
   - commit 标题：`feat(android): add native Kotlin + Jetpack Compose Android client`
   - 远程：`https://github.com/ook826092-cloud/gpt-image-playground`（`master` 分支）
   - `git push origin master` 输出：`eeba3e9..25501a9  master -> master`
-- 暂存范围：`android/`（72 个文件，含 gradle wrapper jar 与 gradlew 脚本）+ `docs/agent-reports/2026-07-14-android-native-kotlin-migration.md`。
+- 追加提交 1（供应商扩展 + CI workflow）：
+  - commit hash：`486e7ea`
+  - commit 标题：`feat(android): add Stability AI + new Gemini models, set up APK CI`
+  - 涉及文件：`data/network/StabilityImageClient.kt`（新增）、`data/model/Provider.kt`、`data/model/AppConfig.kt`、`data/network/ImageProviderService.kt`、`data/network/GeminiImageClient.kt`、`ui/i18n/Strings.kt`、`ui/screens/settings/SettingsScreen.kt`、`.github/workflows/android-build.yml`（新增）
+  - `git push origin master` 输出：`d5f9a85..486e7ea  master -> master`
+  - 对应 CI run：`29297877429`（失败，见「问题与解决」末行）
+- 追加提交 2（Room 升级 + README 更新）：
+  - commit hash：`f77f9b8`
+  - commit 标题：`fix(android): bump Room to 2.7.0 to fix KSP "unexpected jvm signature V"`
+  - 涉及文件：`android/gradle/libs.versions.toml`（room 2.6.1 → 2.7.0）、`android/README.md`（新增供应商表 + 市场调研段 + 持续集成段）
+  - `git push origin master` 输出：`486e7ea..f77f9b8  master -> master`
+  - 对应 CI run：`29298137232`（**进行中**，待完成确认 APK 产物）
 - 提交身份沿用仓库历史作者 `xxxily <974278171@qq.com>`（通过 `GIT_AUTHOR_*` / `GIT_COMMITTER_*` 环境变量传入，未修改任何 git 配置）。
-- 未提交项：原 `src/`、`src-tauri/`、`pages/`、`api/` 等未改动（按用户「保留不动」口径）。
+- 未提交项：原 `src/`、`src-tauri/`、`pages/`、`api/` 等未改动（按用户「保留不动」口径）。本报告（`docs/agent-reports/2026-07-14-android-native-kotlin-migration.md`）将在 CI 验证完成后随状态更新一并提交。
+
+## CI APK 产物获取
+
+若 CI 二轮通过，可按下列步骤获取 debug APK：
+
+1. 访问 `https://github.com/ook826092-cloud/gpt-image-playground/actions`
+2. 找到最近的 `Android Build (Native Kotlin)` run（commit `f77f9b8`）
+3. 滚动到底部 Artifacts 区域，下载 `gpt-image-playground-debug-apk`（zip 解压后即 `app-debug.apk`）
+4. （可选）`gpt-image-playground-release-apk-unsigned` 为未签名 release 包，需自行签名后才能安装

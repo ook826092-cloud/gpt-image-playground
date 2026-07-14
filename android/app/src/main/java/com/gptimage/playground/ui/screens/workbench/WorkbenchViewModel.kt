@@ -234,7 +234,7 @@ class WorkbenchViewModelFactory(
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return WorkbenchViewModel(
-            application = locator.context,
+            application = locator.application,
             settings = locator.settingsRepository,
             generationRepository = locator.imageGenerationRepository
         ) as T

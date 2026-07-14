@@ -64,6 +64,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.gptimage.playground.PlaygroundApp
 import com.gptimage.playground.data.model.ImageBackgrounds
+import com.gptimage.playground.data.model.ImageModelCatalog
 import com.gptimage.playground.data.model.ImageModelDefinition
 import com.gptimage.playground.data.model.ImageModerations
 import com.gptimage.playground.data.model.ImageOutputFormats
@@ -252,6 +253,7 @@ private fun ImageProvidersLabel(provider: String): String = when (provider) {
     com.gptimage.playground.data.model.ImageProviders.GOOGLE -> "Google"
     com.gptimage.playground.data.model.ImageProviders.SENSENOVA -> "SenseNova"
     com.gptimage.playground.data.model.ImageProviders.SEEDREAM -> "Seedream"
+    com.gptimage.playground.data.model.ImageProviders.STABILITY -> "Stability AI"
     else -> "OpenAI"
 }
 

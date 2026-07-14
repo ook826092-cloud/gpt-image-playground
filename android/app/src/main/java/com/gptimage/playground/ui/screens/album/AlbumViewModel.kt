@@ -35,7 +35,7 @@ class AlbumViewModelFactory(
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return AlbumViewModel(
-            application = locator.context,
+            application = locator.application,
             historyRepository = locator.historyRepository
         ) as T
     }

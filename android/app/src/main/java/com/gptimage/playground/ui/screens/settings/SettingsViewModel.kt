@@ -67,7 +67,7 @@ class SettingsViewModelFactory(
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return SettingsViewModel(
-            application = locator.context,
+            application = locator.application,
             settings = locator.settingsRepository
         ) as T
     }

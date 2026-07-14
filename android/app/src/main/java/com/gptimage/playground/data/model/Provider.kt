@@ -67,7 +67,7 @@ data class ImageModelDefinition(
  */
 object ImageModelCatalog {
 
-    val DEFAULT_MODEL_ID: String = "gpt-image-2"
+    const val DEFAULT_MODEL_ID = "gpt-image-2"
 
     private val GPT_IMAGE_SIZES = ImageModelSizePresets(
         square = "1024x1024",

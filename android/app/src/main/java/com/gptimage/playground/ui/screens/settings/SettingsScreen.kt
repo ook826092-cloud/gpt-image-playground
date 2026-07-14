@@ -288,7 +288,7 @@ private fun AboutSection() {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(strings.appName, style = MaterialTheme.typography.titleMedium)
             Text(strings.settingsAboutDescription, style = MaterialTheme.typography.bodySmall)
-            Text(strings.settingsAboutVersion(versionName), style = MaterialTheme.typography.bodySmall)
+            Text(strings.settingsAboutVersion(versionName ?: "1.0.0"), style = MaterialTheme.typography.bodySmall)
             Text(strings.settingsAboutOpenSource, style = MaterialTheme.typography.bodySmall)
         }
     }
