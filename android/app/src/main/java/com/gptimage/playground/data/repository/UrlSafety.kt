@@ -143,10 +143,10 @@ object UrlSafety {
             inCidr(0x0A000000, 8) ||
             inCidr(0x64400000, 10) ||
             inCidr(0x7F000000, 8) ||
-            inCidr(0xA9FE0000, 16) ||
-            inCidr(0xAC100000, 12) ||
-            inCidr(0xC0A80000, 16) ||
-            inCidr(0xE0000000, 4) ||
-            inCidr(0xF0000000, 4)
+            inCidr(0xA9FE0000.toInt(), 16) ||
+            inCidr(0xAC100000.toInt(), 12) ||
+            inCidr(0xC0A80000.toInt(), 16) ||
+            inCidr(0xE0000000.toInt(), 4) ||
+            inCidr(0xF0000000.toInt(), 4)
     }
 }

@@ -28,6 +28,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List as AutoMirroredList
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Bolt
@@ -263,7 +264,7 @@ private fun PromptField(
         ) {
             TextButton(onClick = onOpenTemplates) {
                 Icon(
-                    imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Filled.List,
+                    imageVector = AutoMirroredList,
                     contentDescription = null,
                     modifier = Modifier.size(18.dp)
                 )
