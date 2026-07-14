@@ -68,5 +68,11 @@
 
 ## 提交状态
 
-- 待执行 `git add android/ docs/agent-reports/2026-07-14-android-native-kotlin-migration.md` → `git commit` → `git push origin master`。
-- 具体 commit hash 见 `git log` 输出；本报告将在推送后补录 hash（如未补录，以 `git log -- android/` 最新一条为准）。
+- 已提交并推送到 `origin/master`：
+  - commit hash：`25501a9`
+  - commit 标题：`feat(android): add native Kotlin + Jetpack Compose Android client`
+  - 远程：`https://github.com/ook826092-cloud/gpt-image-playground`（`master` 分支）
+  - `git push origin master` 输出：`eeba3e9..25501a9  master -> master`
+- 暂存范围：`android/`（72 个文件，含 gradle wrapper jar 与 gradlew 脚本）+ `docs/agent-reports/2026-07-14-android-native-kotlin-migration.md`。
+- 提交身份沿用仓库历史作者 `xxxily <974278171@qq.com>`（通过 `GIT_AUTHOR_*` / `GIT_COMMITTER_*` 环境变量传入，未修改任何 git 配置）。
+- 未提交项：原 `src/`、`src-tauri/`、`pages/`、`api/` 等未改动（按用户「保留不动」口径）。
