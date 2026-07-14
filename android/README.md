@@ -47,12 +47,26 @@
 
 ## 持续集成（GitHub Actions）
 
-仓库内置 [`.github/workflows/android-build.yml`](../.github/workflows/android-build.yml)：当 `android/` 目录或该工作流文件有变更推送到 `master`、或推送 `v*` 标签、或手动触发时，会在 GitHub 上编译并产出 APK 构建产物（artifact）。
+仓库内置 [`.github/workflows/android-build.yml`](../.github/workflows/android-build.yml)：每次 push 到 `master`、推送 `v*` 标签或手动触发时，CI 会编译 **签名 release APK** 并自动发布到 GitHub Release 页面。
 
-- 触发：push 到 master / `v*` tag / `workflow_dispatch`
+- 触发：push 到 master / `v*` tag / `workflow_dispatch` / 涉及 `android/` 的 PR
 - 环境：ubuntu-latest + JDK 17 + Android SDK 35
-- 产物：`gpt-image-playground-debug-apk`（debug APK，主产物）+ `gpt-image-playground-release-apk-unsigned`（unsigned release APK，best-effort）
-- 下载：在仓库的 **Actions** 标签页找到对应 run → 下拉到 Artifacts 区域下载 APK zip
+- 签名：CI 自动生成 RSA 2048 / 100 年有效期的 keystore，并通过 `actions/cache` 持久化（key=`release-keystore-v1`），所以**每次构建的签名指纹稳定**，新版 APK 可以直接覆盖安装旧版，无需卸载
+- 只编译 release：CI 不再产出 debug APK
+- 产物命名：`app-release-<short-sha>.apk`
+
+### Release 页面规则
+
+| 触发方式 | Release 行为 |
+| --- | --- |
+| push 到 master / main | 更新滚动 pre-release `continuous`（同名 tag，每次覆盖 APK） |
+| push `v*` tag（如 `v1.0.1`） | 创建正式 Release `v1.0.1`，自动生成 release notes |
+| `workflow_dispatch` 手动触发 | 同 master，更新 `continuous` |
+| Pull Request | 只产出 artifact，不创建 Release |
+
+下载地址：
+- 滚动版（最新 master）：`https://github.com/ook826092-cloud/gpt-image-playground/releases/tag/continuous`
+- 历史正式版：`https://github.com/ook826092-cloud/gpt-image-playground/releases`
 
 仓库原有的 `build-release.yml`（Tauri 桌面端 + Tauri 安卓打包）保留不动，仅作为参考，与本原生工程互不影响。
 

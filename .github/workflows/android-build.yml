@@ -1,105 +1,180 @@
 name: Android Build (Native Kotlin)
 
 on:
-    push:
-        branches:
-            - master
-            - main
-        paths:
-            - 'android/**'
-            - '.github/workflows/android-build.yml'
-        tags:
-            - 'v*'
-    pull_request:
-        paths:
-            - 'android/**'
-            - '.github/workflows/android-build.yml'
-    workflow_dispatch:
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-build.yml'
+    tags:
+      - 'v*'
+  pull_request:
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-build.yml'
+  workflow_dispatch:
 
 concurrency:
-    group: android-native-${{ github.ref }}
-    cancel-in-progress: true
+  group: android-native-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
-    contents: read
+  contents: write
 
 env:
-    ANDROID_API_LEVEL: '35'
-    ANDROID_BUILD_TOOLS_VERSION: '35.0.0'
+  ANDROID_API_LEVEL: '35'
+  ANDROID_BUILD_TOOLS_VERSION: '35.0.0'
+  KEYSTORE_PASSWORD: 'android'
+  KEY_ALIAS: 'gpt-image'
+  KEY_PASSWORD: 'android'
 
 jobs:
-    build-apk:
-        name: Build Android APK
-        runs-on: ubuntu-latest
+  build-apk:
+    name: Build & Release signed Android APK
+    runs-on: ubuntu-latest
 
-        steps:
-            - name: Check out source
-              uses: actions/checkout@v4
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
 
-            - name: Set up JDK 17
-              uses: actions/setup-java@v4
-              with:
-                  distribution: temurin
-                  java-version: '17'
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-            - name: Set up Android SDK
-              uses: android-actions/setup-android@v3
-              with:
-                  packages: >-
-                      platform-tools
-                      platforms;android-${{ env.ANDROID_API_LEVEL }}
-                      build-tools;${{ env.ANDROID_BUILD_TOOLS_VERSION }}
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: >-
+            platform-tools
+            platforms;android-${{ env.ANDROID_API_LEVEL }}
+            build-tools;${{ env.ANDROID_BUILD_TOOLS_VERSION }}
 
-            - name: Export Android SDK root
-              shell: bash
-              run: |
-                  set -euo pipefail
-                  SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
-                  if [[ -z "${SDK_ROOT}" ]]; then
-                    echo "Android SDK root was not set by the setup-android action" >&2
-                    exit 1
-                  fi
-                  {
-                    echo "ANDROID_HOME=${SDK_ROOT}"
-                    echo "ANDROID_SDK_ROOT=${SDK_ROOT}"
-                  } >> "${GITHUB_ENV}"
+      - name: Export Android SDK root
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [[ -z "${SDK_ROOT}" ]]; then
+            echo "Android SDK root was not set by the setup-android action" >&2
+            exit 1
+          fi
+          {
+            echo "ANDROID_HOME=${SDK_ROOT}"
+            echo "ANDROID_SDK_ROOT=${SDK_ROOT}"
+          } >> "${GITHUB_ENV}"
 
-            - name: Cache Gradle dependencies
-              uses: actions/cache@v4
-              with:
-                  path: |
-                      ~/.gradle/caches
-                      ~/.gradle/wrapper
-                      android/.gradle
-                  key: android-gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/libs.versions.toml', 'android/gradle/wrapper/gradle-wrapper.properties') }}
-                  restore-keys: |
-                      android-gradle-${{ runner.os }}-
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            android/.gradle
+          key: android-gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/libs.versions.toml', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            android-gradle-${{ runner.os }}-
 
-            - name: Grant execute permission for gradlew
-              run: chmod +x android/gradlew
+      - name: Cache release keystore (auto-generated, stable across builds)
+        id: cache-keystore
+        uses: actions/cache@v4
+        with:
+          path: android/release.keystore
+          key: release-keystore-v1
 
-            - name: Build debug APK
-              working-directory: android
-              run: ./gradlew assembleDebug --no-daemon --stacktrace
+      - name: Generate release keystore if missing
+        if: steps.cache-keystore.outputs.cache-hit != 'true'
+        working-directory: android
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -v \
+            -keystore release.keystore \
+            -alias "${KEY_ALIAS}" \
+            -keyalg RSA -keysize 2048 -validity 36500 \
+            -storepass "${KEYSTORE_PASSWORD}" \
+            -keypass "${KEY_PASSWORD}" \
+            -dname "CN=GPT Image Playground, OU=CI Auto Signed, O=Open Source, L=Remote, ST=Remote, C=CN"
+          echo "::notice::Generated new release.keystore (RSA 2048, 100-year validity). Cached for future builds so APK upgrade will work."
 
-            - name: Upload debug APK artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: gpt-image-playground-debug-apk
-                  path: android/app/build/outputs/apk/debug/*.apk
-                  if-no-files-found: error
-                  retention-days: 30
+      - name: Grant execute permission for gradlew
+        run: chmod +x android/gradlew
 
-            - name: Build release APK (unsigned)
-              working-directory: android
-              run: ./gradlew assembleRelease --no-daemon --stacktrace
-              continue-on-error: true
+      - name: Build signed release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
 
-            - name: Upload release APK artifact
-              if: always()
-              uses: actions/upload-artifact@v4
-              with:
-                  name: gpt-image-playground-release-apk-unsigned
-                  path: android/app/build/outputs/apk/release/*.apk
-                  if-no-files-found: ignore
-                  retention-days: 30
+      - name: Verify APK signature
+        working-directory: android
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
+          echo "APK: $APK"
+          "${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS_VERSION}/apksigner" verify --print-certs "$APK" || true
+
+      - name: Rename APK to include short SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd android/app/build/outputs/apk/release
+          SHA="${GITHUB_SHA::7}"
+          for apk in *.apk; do
+            base="${apk%.apk}"
+            mv "$apk" "${base}-${SHA}.apk"
+          done
+          ls -la
+
+      - name: Upload signed release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpt-image-playground-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create or update rolling GitHub Release (push to master/main)
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: continuous
+          name: Continuous Build
+          body: |
+            Auto-built **signed** release APK from `${{ github.sha }}`.
+
+            - Built at run: ${{ github.run_id }}
+            - Commit: ${{ github.sha }}
+            - This is a rolling pre-release. The APK here is overwritten on every successful master build.
+
+            The APK is signed with an auto-generated CI keystore (RSA 2048, 100-year validity), so it is directly installable. Because the keystore is cached, the signing fingerprint stays stable across builds — you can install an upgrade over the previous version without uninstalling.
+          prerelease: true
+          files: android/app/build/outputs/apk/release/*.apk
+          make_latest: 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create tagged GitHub Release (v* tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android/app/build/outputs/apk/release/*.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create rolling GitHub Release (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: continuous
+          name: Continuous Build
+          body: |
+            Auto-built **signed** release APK from manual workflow_dispatch (commit `${{ github.sha }}`, run ${{ github.run_id }}).
+          prerelease: true
+          files: android/app/build/outputs/apk/release/*.apk
+          make_latest: 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

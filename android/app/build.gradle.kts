@@ -21,6 +21,22 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
 
+    // Release signing: keystore path/credentials are read from environment variables
+    // (set by CI). When `release.keystore` exists at the module root, the release build
+    // is signed; otherwise it falls back to unsigned (local dev builds keep working).
+    val releaseKeystore = rootProject.file("release.keystore")
+
+    signingConfigs {
+        create("release") {
+            if (releaseKeystore.exists()) {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "android"
+                keyAlias = System.getenv("KEY_ALIAS") ?: "gpt-image"
+                keyPassword = System.getenv("KEY_PASSWORD") ?: "android"
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -34,6 +50,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (releaseKeystore.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
