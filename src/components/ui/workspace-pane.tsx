@@ -42,6 +42,7 @@ export function WorkspacePane({
         return (
             <aside
                 role='complementary'
+                data-workspace-pane
                 aria-label={typeof title === 'string' ? title : undefined}
                 data-collapsed='true'
                 className={cn(
