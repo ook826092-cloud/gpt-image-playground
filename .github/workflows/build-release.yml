@@ -361,13 +361,7 @@ jobs:
                       // Find the release build type and add optimization flags
                       gradle = gradle.replace(
                         /(getByName\("release"\)\s*\{)/,
-                        `$1
-                isMinifyEnabled = true
-                isShrinkResources = true
-                proguardFiles(
-                    getDefaultProguardFile("proguard-android-optimize.txt"),
-                    "proguard-rules.pro"
-                )`
+                        '$1\n                isMinifyEnabled = true\n                isShrinkResources = true\n                proguardFiles(\n                    getDefaultProguardFile("proguard-android-optimize.txt"),\n                    "proguard-rules.pro"\n                )'
                       );
                     }
 
@@ -375,11 +369,7 @@ jobs:
                     if (!gradle.includes('abiFilters')) {
                       gradle = gradle.replace(
                         /(buildTypes\s*\{[\s\S]*?^\s*\})/m,
-                        `ndk {
-                abiFilters += listOf("arm64-v8a")
-            }
-
-            $1`
+                        'ndk {\n                abiFilters += listOf("arm64-v8a")\n            }\n\n            $1'
                       );
                     }
 
@@ -447,8 +437,7 @@ jobs:
                     // Add resConfigs inside the android { } block
                     gradle = gradle.replace(
                       /(android\s*\{)/,
-                      `$1
-            resourceConfigurations += listOf("en", "zh")`
+                      '$1\n            resourceConfigurations += listOf("en", "zh")'
                     );
                     fs.writeFileSync(buildGradle, gradle);
                     NODE_RESCONFIG
@@ -501,13 +490,12 @@ jobs:
                   writeFileSync(
                     keystorePropertiesFile,
                     [
-                      `keyAlias=${process.env.KEY_ALIAS}`,
-                      `password=${process.env.KEY_PASSWORD}`,
-                      `storeFile=${keystoreFile}`,
-                      `storePassword=${process.env.KEYSTORE_PASSWORD}`,
+                      'keyAlias=' + process.env.KEY_ALIAS,
+                      'password=' + process.env.KEY_PASSWORD,
+                      'storeFile=' + keystoreFile,
+                      'storePassword=' + process.env.KEYSTORE_PASSWORD,
                       '',
-                    ].join('
-'),
+                    ].join('\n'),
                     { mode: 0o600 },
                   );
 
@@ -521,65 +509,52 @@ jobs:
                     imports.push('import java.util.Properties');
                   }
                   if (imports.length > 0) {
-                    gradle = `${imports.join('
-')}
-
-${gradle}`;
+                    gradle = imports.join('\n') + '\n\n' + gradle;
                   }
 
-                  const signingConfig = `    signingConfigs {
-                      create("release") {
-                          val keystorePropertiesFile = rootProject.file("keystore.properties")
-                          val keystoreProperties = Properties()
-
-                          if (keystorePropertiesFile.exists()) {
-                              keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-                          }
-
-                          keyAlias = keystoreProperties["keyAlias"] as String
-                          keyPassword = keystoreProperties["password"] as String
-                          storeFile = file(keystoreProperties["storeFile"] as String)
-                          storePassword = keystoreProperties["storePassword"] as String
-                      }
-                  }
-
-                  `;
+                  const signingConfig = '    signingConfigs {\n' +
+                    '        create("release") {\n' +
+                    '            val keystorePropertiesFile = rootProject.file("keystore.properties")\n' +
+                    '            val keystoreProperties = Properties()\n' +
+                    '\n' +
+                    '            if (keystorePropertiesFile.exists()) {\n' +
+                    '                keystoreProperties.load(FileInputStream(keystorePropertiesFile))\n' +
+                    '            }\n' +
+                    '\n' +
+                    '            keyAlias = keystoreProperties["keyAlias"] as String\n' +
+                    '            keyPassword = keystoreProperties["password"] as String\n' +
+                    '            storeFile = file(keystoreProperties["storeFile"] as String)\n' +
+                    '            storePassword = keystoreProperties["storePassword"] as String\n' +
+                    '        }\n' +
+                    '    }\n' +
+                    '\n';
 
                   if (!gradle.includes('create("release")')) {
                     if (gradle.includes('    buildTypes {')) {
-                      gradle = gradle.replace('    buildTypes {', `${signingConfig}    buildTypes {`);
+                      gradle = gradle.replace('    buildTypes {', signingConfig + '    buildTypes {');
                     } else {
-                      gradle = gradle.replace(/android\s*\{
-/, (match) => `${match}${signingConfig}`);
+                      gradle = gradle.replace(/android\s*\{/, (match) => match + signingConfig);
                     }
                   }
 
                   if (!gradle.includes('signingConfig = signingConfigs.getByName("release")')) {
                     if (gradle.includes('getByName("release") {')) {
                       gradle = gradle.replace(
-                        /getByName\("release"\)\s*\{
-/,
-                        (match) => `${match}            signingConfig = signingConfigs.getByName("release")
-`,
+                        /getByName\("release"\)\s*\{/,
+                        (match) => match + '\n            signingConfig = signingConfigs.getByName("release")'
                       );
                     } else if (gradle.includes('    buildTypes {')) {
                       gradle = gradle.replace(
                         '    buildTypes {',
-                        '    buildTypes {
-        getByName("release") {
-            signingConfig = signingConfigs.getByName("release")
-        }
-',
+                        '    buildTypes {\n        getByName("release") {\n            signingConfig = signingConfigs.getByName("release")\n        }'
                       );
                     } else {
-                      const block = `    buildTypes {
-                      getByName("release") {
-                          signingConfig = signingConfigs.getByName("release")
-                      }
-                  }
-                  `;
-                      gradle = gradle.replace(/android\s*\{
-/, (match) => `${match}${block}`);
+                      const block = '    buildTypes {\n' +
+                        '        getByName("release") {\n' +
+                        '            signingConfig = signingConfigs.getByName("release")\n' +
+                        '        }\n' +
+                        '    }\n';
+                      gradle = gradle.replace(/android\s*\{/, (match) => match + block);
                     }
                   }
 
@@ -601,7 +576,7 @@ ${gradle}`;
               shell: bash
               run: |
                   set -euo pipefail
-                  shopt -s globstar nullfail
+                  shopt -s globstar nullglob
 
                   apk_files=(src-tauri/gen/android/app/build/outputs/apk/**/*.apk)
                   echo "## APK Build Results" >> "${GITHUB_STEP_SUMMARY}"
