@@ -228,3 +228,76 @@
     scroll-behavior: auto !important;
   }
 }
+
+
+/* ═══════════════════════════════════════════════════════════
+   Mobile-first responsive improvements
+   ═══════════════════════════════════════════════════════════ */
+
+/* Minimum touch target size (WCAG 2.5.5 Level AAA: 44px) */
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  a[href],
+  input,
+  select,
+  textarea,
+  [tabindex]:not([tabindex="-1"]) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Collapse resizable workspace to single-column on small screens */
+@media (max-width: 1023px) {
+  [data-resizable-workspace] {
+    flex-direction: column !important;
+    overflow-y: auto !important;
+  }
+
+  [data-resizable-workspace] > :not([data-workspace-main]) {
+    display: none !important;
+  }
+
+  [data-resizable-workspace] [data-workspace-main] {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  [data-workspace-resize-handle] {
+    display: none !important;
+  }
+
+  /* Override fixed-width pane columns on mobile */
+  [data-workspace-pane] {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+/* Improve scrolling on mobile WebView */
+@media (max-width: 1023px) {
+  html {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body {
+    overscroll-behavior-y: contain;
+  }
+
+  /* Native-like momentum scroll */
+  [data-scroll-container] {
+    -webkit-overflow-scrolling: touch;
+    overflow-y: auto;
+  }
+}
+
+/* Force GPU layer for smooth animations on mobile */
+@media (max-width: 1023px) {
+  [data-animate-on-mobile] {
+    transform: translateZ(0);
+    will-change: transform;
+  }
+}
