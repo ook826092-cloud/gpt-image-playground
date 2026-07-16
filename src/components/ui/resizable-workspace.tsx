@@ -83,6 +83,7 @@ export function ResizableWorkspace({ main, className, leftAuxiliary, rightAuxili
     return (
         <div
             ref={containerRef}
+            data-resizable-workspace
             className={cn('grid h-full min-h-0 w-full overflow-hidden gap-0', className)}
             style={{ gridTemplateColumns: columns.join(' ') }}>
             {leftOpen && (
