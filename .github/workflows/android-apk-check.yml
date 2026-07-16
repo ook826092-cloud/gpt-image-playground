@@ -1,0 +1,96 @@
+name: Android APK Size Check
+
+on:
+  push:
+    branches:
+      - optimize-apk-size
+  workflow_dispatch:
+
+concurrency:
+  group: apk-check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+  ANDROID_API_LEVEL: '35'
+  ANDROID_BUILD_TOOLS_VERSION: '35.0.0'
+  ANDROID_NDK_VERSION: '27.2.12479018'
+
+jobs:
+  build-and-compare:
+    name: Build APK & Report Size
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: >-
+            platform-tools
+            platforms;android-${{ env.ANDROID_API_LEVEL }}
+            build-tools;${{ env.ANDROID_BUILD_TOOLS_VERSION }}
+            ndk;${{ env.ANDROID_NDK_VERSION }}
+
+      - name: Export Android SDK paths
+        shell: bash
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          echo "ANDROID_HOME=${SDK_ROOT}" >> "${GITHUB_ENV}"
+          echo "ANDROID_SDK_ROOT=${SDK_ROOT}" >> "${GITHUB_ENV}"
+          echo "NDK_HOME=${SDK_ROOT}/ndk/${ANDROID_NDK_VERSION}" >> "${GITHUB_ENV}"
+          echo "ANDROID_NDK_HOME=${SDK_ROOT}/ndk/${ANDROID_NDK_VERSION}" >> "${GITHUB_ENV}"
+          echo "JAVA_HOME=${JAVA_HOME}" >> "${GITHUB_ENV}"
+
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri'
+
+      - name: Install frontend dependencies
+        run: npm ci --prefer-offline
+
+      - name: Initialize Android project
+        run: npx tauri android init --ci
+
+      - name: Build Android APK
+        run: npx tauri android build --apk
+        env:
+          DESKTOP_BUILD: 'true'
+
+      - name: Report APK size
+        shell: bash
+        run: |
+          echo "## APK Build Result" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          apk_files=(src-tauri/gen/android/app/build/outputs/apk/**/*.apk)
+          for apk in "${apk_files[@]}"; do
+            size=$(stat -c%s "$apk" 2>/dev/null || stat -f%z "$apk" 2>/dev/null)
+            size_mb=$(echo "scale=2; $size / 1048576" | bc)
+            name=$(basename "$apk")
+            echo "| File | Size |" >> "${GITHUB_STEP_SUMMARY}"
+            echo "|------|------|" >> "${GITHUB_STEP_SUMMARY}"
+            echo "| \`$name\` | **${size_mb} MB** ($size bytes) |" >> "${GITHUB_STEP_SUMMARY}"
+          done
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "Baseline (v2.15.4): 18.5 MB" >> "${GITHUB_STEP_SUMMARY}"
+          echo "Target: 13-15 MB" >> "${GITHUB_STEP_SUMMARY}"
